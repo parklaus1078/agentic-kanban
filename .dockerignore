@@ -1,0 +1,39 @@
+# Build context is the repo root for both infra/Dockerfile.api and
+# infra/Dockerfile.web. Keep the context small and reproducible: never ship
+# host caches, local virtualenvs, node_modules, prior builds, or secrets.
+
+# ---- VCS ----
+.git/
+.gitignore
+
+# ---- Python ----
+**/__pycache__/
+**/*.py[cod]
+**/*.egg-info/
+**/.venv/
+**/venv/
+**/env/
+**/.pytest_cache/
+**/.mypy_cache/
+**/.ruff_cache/
+
+# ---- Node / web (rebuilt inside the image) ----
+**/node_modules/
+**/dist/
+**/.vite/
+
+# ---- Databases / local data ----
+*.db
+*.sqlite
+*.sqlite3
+
+# ---- Env / secrets ----
+.env
+.env.*
+!.env.example
+
+# ---- OS / editor ----
+**/.DS_Store
+**/*.swp
+.idea/
+.vscode/

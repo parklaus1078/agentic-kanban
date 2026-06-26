@@ -1,0 +1,288 @@
+"""SQLAlchemy ORM models for Agent System v2.
+
+Portable types only (JSON works on both SQLite and Postgres). Timestamps are
+stored as naive UTC; serialization adds the trailing 'Z'.
+"""
+from __future__ import annotations
+
+from datetime import datetime
+
+from sqlalchemy import (
+    JSON,
+    Boolean,
+    DateTime,
+    Float,
+    ForeignKey,
+    Integer,
+    String,
+    Text,
+    UniqueConstraint,
+)
+from sqlalchemy.orm import Mapped, mapped_column, relationship
+
+from .db import Base
+
+
+def _utcnow() -> datetime:
+    return datetime.utcnow()
+
+
+class Board(Base):
+    __tablename__ = "boards"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    name: Mapped[str] = mapped_column(String(200))
+    description: Mapped[str | None] = mapped_column(Text, default=None)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=_utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=_utcnow, onupdate=_utcnow)
+
+    status_blocks: Mapped[list["StatusBlock"]] = relationship(
+        back_populates="board", cascade="all, delete-orphan", order_by="StatusBlock.order_index"
+    )
+    tickets: Mapped[list["Ticket"]] = relationship(back_populates="board", cascade="all, delete-orphan")
+
+
+class BoardTemplate(Base):
+    __tablename__ = "board_templates"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    name: Mapped[str] = mapped_column(String(200), unique=True)
+    default_statuses_json: Mapped[list] = mapped_column(JSON, default=list)
+    default_digest_policy: Mapped[str] = mapped_column(String(50), default="manual")
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=_utcnow)
+
+
+class StatusBlock(Base):
+    __tablename__ = "status_blocks"
+    __table_args__ = (UniqueConstraint("board_id", "name", name="uq_statusblock_board_name"),)
+    id: Mapped[int] = mapped_column(primary_key=True)
+    board_id: Mapped[int] = mapped_column(ForeignKey("boards.id", ondelete="CASCADE"))
+    name: Mapped[str] = mapped_column(String(100))
+    order_index: Mapped[int] = mapped_column(Integer, default=0)
+    color: Mapped[str] = mapped_column(String(20), default="#9ca3af")
+    is_agent_digestible: Mapped[bool] = mapped_column(Boolean, default=False)
+    is_terminal: Mapped[bool] = mapped_column(Boolean, default=False)
+
+    board: Mapped[Board] = relationship(back_populates="status_blocks")
+
+
+class Ticket(Base):
+    __tablename__ = "tickets"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    board_id: Mapped[int] = mapped_column(ForeignKey("boards.id", ondelete="CASCADE"))
+    ticket_number: Mapped[str] = mapped_column(String(40), unique=True, index=True)
+    title: Mapped[str] = mapped_column(String(400))
+    description_md: Mapped[str] = mapped_column(Text, default="")
+    acceptance_criteria_md: Mapped[str] = mapped_column(Text, default="")
+    status_block_id: Mapped[int] = mapped_column(ForeignKey("status_blocks.id"))
+    assignee_persona: Mapped[str | None] = mapped_column(String(100), default=None)
+    priority: Mapped[int] = mapped_column(Integer, default=3)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=_utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=_utcnow, onupdate=_utcnow)
+    started_at: Mapped[datetime | None] = mapped_column(DateTime, default=None)
+    completed_at: Mapped[datetime | None] = mapped_column(DateTime, default=None)
+    canceled_at: Mapped[datetime | None] = mapped_column(DateTime, default=None)
+
+    board: Mapped[Board] = relationship(back_populates="tickets")
+    status_block: Mapped[StatusBlock] = relationship()
+    comments: Mapped[list["Comment"]] = relationship(
+        back_populates="ticket", cascade="all, delete-orphan", order_by="Comment.created_at"
+    )
+    status_events: Mapped[list["StatusEvent"]] = relationship(
+        back_populates="ticket", cascade="all, delete-orphan", order_by="StatusEvent.created_at"
+    )
+    runs: Mapped[list["AgentRun"]] = relationship(
+        back_populates="ticket", cascade="all, delete-orphan", order_by="AgentRun.run_number"
+    )
+    navigator_decisions: Mapped[list["NavigatorDecision"]] = relationship(
+        back_populates="ticket", cascade="all, delete-orphan", order_by="NavigatorDecision.created_at"
+    )
+
+    @property
+    def status(self) -> str:
+        return self.status_block.name if self.status_block else ""
+
+
+class Comment(Base):
+    __tablename__ = "comments"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    ticket_id: Mapped[int] = mapped_column(ForeignKey("tickets.id", ondelete="CASCADE"))
+    author_type: Mapped[str] = mapped_column(String(40), default="human")
+    author_name: Mapped[str] = mapped_column(String(120), default="")
+    body_md: Mapped[str] = mapped_column(Text, default="")
+    body_latex_raw: Mapped[str | None] = mapped_column(Text, default=None)
+    is_digestible: Mapped[bool] = mapped_column(Boolean, default=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=_utcnow)
+
+    ticket: Mapped[Ticket] = relationship(back_populates="comments")
+
+
+class StatusEvent(Base):
+    __tablename__ = "status_events"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    ticket_id: Mapped[int] = mapped_column(ForeignKey("tickets.id", ondelete="CASCADE"))
+    from_status: Mapped[str | None] = mapped_column(String(100), default=None)
+    to_status: Mapped[str] = mapped_column(String(100))
+    actor: Mapped[str] = mapped_column(String(120), default="system")
+    reason_md: Mapped[str | None] = mapped_column(Text, default=None)
+    wiki_raw_path: Mapped[str | None] = mapped_column(Text, default=None)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=_utcnow)
+
+    ticket: Mapped[Ticket] = relationship(back_populates="status_events")
+
+
+class Persona(Base):
+    __tablename__ = "personas"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    persona_name: Mapped[str] = mapped_column(String(100), unique=True)
+    default_agent: Mapped[str] = mapped_column(String(20))  # codex | claude
+    default_model: Mapped[str] = mapped_column(String(80))
+    family: Mapped[str] = mapped_column(String(40))  # business | engineering
+    description: Mapped[str] = mapped_column(Text, default="")
+    risk_level: Mapped[str] = mapped_column(String(20), default="low")
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+
+
+class Skill(Base):
+    __tablename__ = "skills"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    name: Mapped[str] = mapped_column(String(120), unique=True)
+    tags_json: Mapped[list] = mapped_column(JSON, default=list)
+    compatible_personas_json: Mapped[list] = mapped_column(JSON, default=list)
+    compatible_brains_json: Mapped[list] = mapped_column(JSON, default=list)
+    description: Mapped[str] = mapped_column(Text, default="")
+
+    @property
+    def tags(self) -> list:
+        return self.tags_json or []
+
+    @property
+    def compatible_personas(self) -> list:
+        return self.compatible_personas_json or []
+
+    @property
+    def compatible_brains(self) -> list:
+        return self.compatible_brains_json or []
+
+
+class NavigatorDecision(Base):
+    __tablename__ = "navigator_decisions"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    ticket_id: Mapped[int] = mapped_column(ForeignKey("tickets.id", ondelete="CASCADE"))
+    persona: Mapped[str] = mapped_column(String(100))
+    agent: Mapped[str] = mapped_column(String(20))
+    model: Mapped[str] = mapped_column(String(80))
+    skills_json: Mapped[list] = mapped_column(JSON, default=list)
+    confidence: Mapped[float] = mapped_column(Float, default=0.0)
+    reason: Mapped[str] = mapped_column(Text, default="")
+    alternatives_json: Mapped[list] = mapped_column(JSON, default=list)
+    manual_override: Mapped[bool] = mapped_column(Boolean, default=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=_utcnow)
+
+    ticket: Mapped[Ticket] = relationship(back_populates="navigator_decisions")
+
+    @property
+    def skills(self) -> list:
+        return self.skills_json or []
+
+    @property
+    def alternatives(self) -> list:
+        return self.alternatives_json or []
+
+
+class AgentRun(Base):
+    __tablename__ = "agent_runs"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    ticket_id: Mapped[int] = mapped_column(ForeignKey("tickets.id", ondelete="CASCADE"))
+    run_number: Mapped[int] = mapped_column(Integer, default=1)
+    agent: Mapped[str] = mapped_column(String(20))
+    model: Mapped[str] = mapped_column(String(80))
+    persona: Mapped[str] = mapped_column(String(100))
+    prompt_md: Mapped[str] = mapped_column(Text, default="")
+    skills_json: Mapped[list] = mapped_column(JSON, default=list)
+    plugins_json: Mapped[list] = mapped_column(JSON, default=list)
+    output_path: Mapped[str | None] = mapped_column(Text, default=None)
+    status: Mapped[str] = mapped_column(String(20), default="queued")
+    process_id: Mapped[str | None] = mapped_column(String(80), default=None)
+    started_at: Mapped[datetime | None] = mapped_column(DateTime, default=None)
+    finished_at: Mapped[datetime | None] = mapped_column(DateTime, default=None)
+    error: Mapped[str | None] = mapped_column(Text, default=None)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=_utcnow)
+
+    ticket: Mapped[Ticket] = relationship(back_populates="runs")
+    artifacts: Mapped[list["Artifact"]] = relationship(
+        back_populates="run", cascade="all, delete-orphan", order_by="Artifact.created_at"
+    )
+    watcher_events: Mapped[list["WatcherEvent"]] = relationship(
+        back_populates="run", cascade="all, delete-orphan", order_by="WatcherEvent.observed_at"
+    )
+
+    @property
+    def skills(self) -> list:
+        return self.skills_json or []
+
+    @property
+    def plugins(self) -> list:
+        return self.plugins_json or []
+
+
+class QueueItem(Base):
+    __tablename__ = "queue_items"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    ticket_id: Mapped[int] = mapped_column(ForeignKey("tickets.id", ondelete="CASCADE"))
+    run_id: Mapped[int | None] = mapped_column(ForeignKey("agent_runs.id", ondelete="CASCADE"), default=None)
+    order_index: Mapped[int] = mapped_column(Integer, default=0)
+    state: Mapped[str] = mapped_column(String(20), default="queued")  # queued|running|done|canceled
+    cancel_requested: Mapped[bool] = mapped_column(Boolean, default=False)
+    locked_by: Mapped[str | None] = mapped_column(String(80), default=None)
+    queued_at: Mapped[datetime] = mapped_column(DateTime, default=_utcnow)
+    started_at: Mapped[datetime | None] = mapped_column(DateTime, default=None)
+
+    ticket: Mapped["Ticket"] = relationship()
+
+    @property
+    def ticket_number(self) -> str:
+        return self.ticket.ticket_number if self.ticket else ""
+
+    @property
+    def ticket_title(self) -> str:
+        return self.ticket.title if self.ticket else ""
+
+
+class Artifact(Base):
+    __tablename__ = "artifacts"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    run_id: Mapped[int] = mapped_column(ForeignKey("agent_runs.id", ondelete="CASCADE"))
+    path: Mapped[str] = mapped_column(Text)
+    mime_type: Mapped[str] = mapped_column(String(80), default="application/octet-stream")
+    author_name: Mapped[str] = mapped_column(String(120), default="")
+    summary: Mapped[str] = mapped_column(Text, default="")
+    checksum: Mapped[str | None] = mapped_column(String(80), default=None)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=_utcnow)
+
+    run: Mapped[AgentRun] = relationship(back_populates="artifacts")
+
+
+class WatcherEvent(Base):
+    __tablename__ = "watcher_events"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    run_id: Mapped[int] = mapped_column(ForeignKey("agent_runs.id", ondelete="CASCADE"))
+    event_type: Mapped[str] = mapped_column(String(60))
+    payload_json: Mapped[dict] = mapped_column(JSON, default=dict)
+    observed_at: Mapped[datetime] = mapped_column(DateTime, default=_utcnow)
+
+    run: Mapped[AgentRun] = relationship(back_populates="watcher_events")
+
+    @property
+    def payload(self) -> dict:
+        return self.payload_json or {}
+
+
+class WikiSyncJob(Base):
+    __tablename__ = "wiki_sync_jobs"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    ticket_id: Mapped[int] = mapped_column(ForeignKey("tickets.id", ondelete="CASCADE"))
+    raw_path: Mapped[str] = mapped_column(Text)
+    ingest_status: Mapped[str] = mapped_column(String(20), default="pending")
+    audit_status: Mapped[str] = mapped_column(String(20), default="pending")
+    scheduled_at: Mapped[datetime | None] = mapped_column(DateTime, default=None)
+    completed_at: Mapped[datetime | None] = mapped_column(DateTime, default=None)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=_utcnow)

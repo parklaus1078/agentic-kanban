@@ -1,0 +1,122 @@
+# Agent System v2 — local Docker Compose stack (MVP)
+#
+# Run from the repo ROOT, e.g.:
+#   docker compose -f infra/docker-compose.yml --project-directory . up -d --build
+# (The Makefile wraps this for you: `make up`.)
+#
+# Validate on a Docker-enabled host with:
+#   docker compose -f infra/docker-compose.yml --project-directory . config
+#
+# Env defaults below mirror docs/API_CONTRACT.md and the product brief.
+# Create a `.env` at the repo root (copy from .env.example) to override.
+
+# ---- shared backend environment ----------------------------------------------
+x-asv2-env: &asv2-env
+  # psycopg v3 driver form; host "postgres" is the compose service name.
+  DATABASE_URL: "postgresql+psycopg://${POSTGRES_USER:-asv2}:${POSTGRES_PASSWORD:-asv2}@postgres:5432/${POSTGRES_DB:-asv2}"
+  # Host dirs are bind-mounted at the SAME path inside the container (see below),
+  # so these env values are valid both on the host and in the container.
+  ASV2_LLM_WIKI_ROOT: "${ASV2_LLM_WIKI_ROOT:-/home/kay/llm_wiki}"
+  ASV2_CODEX_OUTPUT_DIR: "${ASV2_CODEX_OUTPUT_DIR:-/mnt/k/WRITTEN_BY_CODEX}"
+  ASV2_CLAUDE_OUTPUT_DIR: "${ASV2_CLAUDE_OUTPUT_DIR:-/mnt/k/WRITTEN_BY_CLAUDE}"
+  # Scheduler timezone (02:00 ingest / month-end 04:00 audit jobs).
+  TZ: "${TZ:-Asia/Seoul}"
+  PYTHONUNBUFFERED: "1"
+
+# ---- shared bind mounts (host path == container path) ------------------------
+x-asv2-volumes: &asv2-volumes
+  - "${ASV2_LLM_WIKI_ROOT:-/home/kay/llm_wiki}:${ASV2_LLM_WIKI_ROOT:-/home/kay/llm_wiki}"
+  - "${ASV2_CODEX_OUTPUT_DIR:-/mnt/k/WRITTEN_BY_CODEX}:${ASV2_CODEX_OUTPUT_DIR:-/mnt/k/WRITTEN_BY_CODEX}"
+  - "${ASV2_CLAUDE_OUTPUT_DIR:-/mnt/k/WRITTEN_BY_CLAUDE}:${ASV2_CLAUDE_OUTPUT_DIR:-/mnt/k/WRITTEN_BY_CLAUDE}"
+
+# ---- shared backend service definition (api/worker/watcher/scheduler) --------
+x-backend: &backend
+  build:
+    context: ..
+    dockerfile: infra/Dockerfile.api
+  image: asv2-api:latest
+  environment: *asv2-env
+  volumes: *asv2-volumes
+  restart: unless-stopped
+
+services:
+  postgres:
+    image: postgres:16
+    environment:
+      POSTGRES_USER: "${POSTGRES_USER:-asv2}"
+      POSTGRES_PASSWORD: "${POSTGRES_PASSWORD:-asv2}"
+      POSTGRES_DB: "${POSTGRES_DB:-asv2}"
+      TZ: "${TZ:-Asia/Seoul}"
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-asv2} -d ${POSTGRES_DB:-asv2}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+    restart: unless-stopped
+
+  api:
+    <<: *backend
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8000
+    ports:
+      - "8000:8000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 20s
+
+  worker:
+    <<: *backend
+    command: python -m app.worker_loop
+    depends_on:
+      postgres:
+        condition: service_healthy
+      api:
+        condition: service_healthy
+
+  watcher:
+    <<: *backend
+    command: python -m app.watcher_loop
+    depends_on:
+      postgres:
+        condition: service_healthy
+      api:
+        condition: service_healthy
+
+  scheduler:
+    <<: *backend
+    command: python -m app.scheduler_loop
+    depends_on:
+      postgres:
+        condition: service_healthy
+      api:
+        condition: service_healthy
+
+  web:
+    build:
+      context: ..
+      dockerfile: infra/Dockerfile.web
+      args:
+        VITE_API_BASE: "${VITE_API_BASE:-http://localhost:8000}"
+    image: asv2-web:latest
+    environment:
+      # Note: VITE_API_BASE is baked into the static build at IMAGE BUILD time
+      # (passed as a build arg above). This runtime value is informational.
+      VITE_API_BASE: "${VITE_API_BASE:-http://localhost:8000}"
+    ports:
+      - "5173:80"
+    depends_on:
+      - api
+    restart: unless-stopped
+
+volumes:
+  pgdata:

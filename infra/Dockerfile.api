@@ -1,0 +1,28 @@
+# Agent System v2 — FastAPI backend image.
+# Used by the api, worker, watcher and scheduler services (same image,
+# different entrypoint commands).
+#
+# Build context is the repo ROOT (see infra/docker-compose.yml: context: ..).
+# The Python package lives at apps/api/app, so after COPY the importable
+# module path is `app.main:app`, `app.worker_loop`, etc.
+FROM python:3.11-slim
+
+ENV PYTHONUNBUFFERED=1 \
+    PYTHONDONTWRITEBYTECODE=1 \
+    PIP_NO_CACHE_DIR=1 \
+    PIP_DISABLE_PIP_VERSION_CHECK=1
+
+WORKDIR /app
+
+# Install dependencies first for better layer caching.
+# psycopg[binary] ships the libpq binary wheel, so no system libpq is needed.
+COPY apps/api/requirements.txt ./requirements.txt
+RUN pip install --no-cache-dir -r requirements.txt
+
+# Copy the backend source. apps/api/app -> /app/app (module root: `app`).
+COPY apps/api/ /app/
+
+EXPOSE 8000
+
+# Default command; overridden per-service in docker-compose.yml.
+CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
