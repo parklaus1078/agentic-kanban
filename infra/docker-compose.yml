@@ -32,7 +32,10 @@ x-asv2-volumes: &asv2-volumes
 # ---- shared backend service definition (api/worker/watcher/scheduler) --------
 x-backend: &backend
   build:
-    context: ..
+    # Relative paths resolve against the project directory, which the Makefile
+    # pins to the repo ROOT via `--project-directory .` (so `.env` auto-loads
+    # from root). Therefore the context is `.` (repo root), NOT `..`.
+    context: .
     dockerfile: infra/Dockerfile.api
   image: asv2-api:latest
   environment: *asv2-env
@@ -103,7 +106,7 @@ services:
 
   web:
     build:
-      context: ..
+      context: .
       dockerfile: infra/Dockerfile.web
       args:
         VITE_API_BASE: "${VITE_API_BASE:-http://localhost:8000}"
