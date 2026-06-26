@@ -920,3 +920,223 @@ textarea {
     transition: none;
   }
 }
+
+/* ===================== Phase 5-8 UI: console, live log, subdivision ===================== */
+.console-screen {
+  flex: 1;
+  overflow-y: auto;
+  background: #0b1220;
+  color: #e6edf6;
+  padding: clamp(24px, 4vw, 56px);
+}
+.console-block {
+  max-width: clamp(900px, 92vw, 2000px);
+  margin: 0 auto 40px;
+}
+.console-h {
+  font-size: clamp(22px, 2.4vw, 34px);
+  margin: 4px 0 18px;
+  letter-spacing: -0.01em;
+}
+.console-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(clamp(300px, 40vw, 520px), 1fr));
+  gap: 18px;
+}
+.console-card {
+  background: #0f1a2b;
+  border: 1px solid #20304a;
+  border-radius: 14px;
+  padding: 18px 20px;
+}
+.console-card-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  margin-bottom: 12px;
+}
+.console-card-head .mono {
+  font-size: 16px;
+  color: #4fd6c9;
+}
+.model-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 16px;
+}
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  border: 1px solid #2a3a55;
+  border-radius: 999px;
+  padding: 4px 11px;
+  font-size: 13px;
+  background: rgba(255, 255, 255, 0.03);
+}
+.chip-on {
+  border-color: #4fd6c9;
+  color: #d8fff9;
+}
+.chip-tag {
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: #9a8cff;
+  border: 1px solid #2a3a55;
+  border-radius: 4px;
+  padding: 0 5px;
+}
+.console-label {
+  display: block;
+  font-size: 12px;
+  color: #8a9bb2;
+  margin: 6px 0;
+}
+.preset-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.preset-btn {
+  border: 1px solid #2a3a55;
+  background: transparent;
+  color: #cbd5e1;
+  border-radius: 8px;
+  padding: 6px 12px;
+  font-size: 13px;
+  cursor: pointer;
+}
+.preset-btn.on {
+  border-color: #4fd6c9;
+  color: #fff;
+  background: rgba(79, 214, 201, 0.12);
+}
+.flags {
+  display: block;
+  margin-top: 12px;
+  font-size: 12px;
+  color: #7fe9dd;
+  background: #07101f;
+  border: 1px solid #20304a;
+  border-radius: 8px;
+  padding: 8px 10px;
+}
+.hit-list,
+.skill-list {
+  list-style: none;
+  padding: 0;
+  margin: 8px 0 0;
+}
+.hit {
+  border: 1px solid #20304a;
+  border-radius: 10px;
+  padding: 12px 14px;
+  margin-bottom: 10px;
+  background: #0f1a2b;
+}
+.hit-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 6px;
+}
+.hit-score {
+  color: #4fd6c9;
+  font-variant-numeric: tabular-nums;
+  font-size: 12px;
+}
+.hit-chunk {
+  color: #9fb0c8;
+  font-size: 13px;
+  line-height: 1.5;
+}
+.skill-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  border: 1px solid #20304a;
+  border-radius: 10px;
+  padding: 10px 14px;
+  margin-bottom: 8px;
+  background: #0f1a2b;
+}
+.skill-main {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+.skill-actions {
+  display: flex;
+  gap: 8px;
+  flex: 0 0 auto;
+}
+
+/* live run log */
+.run-log {
+  margin: 12px 0;
+  border: 1px solid #20304a;
+  border-radius: 10px;
+  overflow: hidden;
+}
+.run-log-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: #0d1529;
+  color: #9fb0c8;
+  font-size: 12px;
+  padding: 6px 10px;
+}
+.run-log-body {
+  margin: 0;
+  background: #07101f;
+  color: #c7f9f1;
+  font-size: 12px;
+  line-height: 1.5;
+  padding: 10px 12px;
+  max-height: 240px;
+  overflow: auto;
+  white-space: pre-wrap;
+}
+.live-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #4fd6c9;
+  box-shadow: 0 0 0 0 rgba(79, 214, 201, 0.6);
+  animation: pulse 1.4s infinite;
+}
+.live-dot.off {
+  background: #475569;
+  animation: none;
+}
+@keyframes pulse {
+  70% {
+    box-shadow: 0 0 0 6px rgba(79, 214, 201, 0);
+  }
+  100% {
+    box-shadow: 0 0 0 0 rgba(79, 214, 201, 0);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .live-dot {
+    animation: none;
+  }
+}
+
+/* subdivision */
+.subdiv {
+  margin-top: 10px;
+}
+.subdiv-list {
+  margin: 8px 0;
+  padding-left: 18px;
+}
+.subdiv-list li {
+  margin: 3px 0;
+  font-size: 13px;
+}

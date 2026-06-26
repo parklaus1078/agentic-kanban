@@ -3,18 +3,22 @@ from __future__ import annotations
 
 import os
 import signal
+import time
 from datetime import datetime
 
 from fastapi import APIRouter, Depends, HTTPException
+from fastapi.responses import StreamingResponse
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from .. import schemas, transitions as T
-from ..db import get_db
+from ..db import SessionLocal, get_db
 from ..models import AgentRun, QueueItem
 from ..services import lifecycle
 
 router = APIRouter(tags=["runs"])
+
+_TERMINAL_RUN = {"success", "failed", "canceled"}
 
 
 def _cancel_run(run: AgentRun) -> None:
@@ -49,6 +53,53 @@ def get_run(run_id: int, db: Session = Depends(get_db)):
     if run is None:
         raise HTTPException(404, f"Run {run_id} not found")
     return run
+
+
+@router.get("/runs/{run_id}/log")
+def get_run_log(run_id: int, offset: int = 0, db: Session = Depends(get_db)):
+    """Polling tail of the run's log from a byte offset (§13 fallback)."""
+    run = db.get(AgentRun, run_id)
+    if run is None:
+        raise HTTPException(404, f"Run {run_id} not found")
+    content, new_offset = "", offset
+    if run.log_path and os.path.exists(run.log_path):
+        with open(run.log_path, "rb") as f:
+            data = f.read()
+        content = data[offset:].decode("utf-8", "ignore")
+        new_offset = len(data)
+    return {"offset": new_offset, "content": content, "eof": run.status in _TERMINAL_RUN}
+
+
+@router.get("/runs/{run_id}/stream")
+def stream_run_log(run_id: int):
+    """SSE live tail of the run log (§13 primary). Streams new bytes until the run
+    terminates (bounded). Real mode pipes the tmux pane into the same log file."""
+    def gen():
+        last = 0
+        for _ in range(600):  # ~60s safety bound
+            db = SessionLocal()
+            try:
+                run = db.get(AgentRun, run_id)
+                if run is None:
+                    yield "event: error\ndata: run not found\n\n"
+                    return
+                path, status = run.log_path, run.status
+            finally:
+                db.close()
+            if path and os.path.exists(path):
+                with open(path, "rb") as f:
+                    data = f.read()
+                if len(data) > last:
+                    for line in data[last:].decode("utf-8", "ignore").splitlines():
+                        yield f"data: {line}\n\n"
+                    last = len(data)
+            if status in _TERMINAL_RUN:
+                yield "event: done\ndata: eof\n\n"
+                return
+            time.sleep(0.1)
+        yield "event: done\ndata: timeout\n\n"
+
+    return StreamingResponse(gen(), media_type="text/event-stream")
 
 
 @router.post("/runs/{run_id}/cancel", response_model=schemas.AgentRunOut)

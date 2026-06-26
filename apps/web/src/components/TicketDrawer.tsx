@@ -12,6 +12,7 @@ import { Comments } from './Comments';
 import { NavigatorPanel } from './NavigatorPanel';
 import { RunMonitor } from './RunMonitor';
 import { ReviewPanel } from './ReviewPanel';
+import { SubdivisionPanel } from './SubdivisionPanel';
 
 interface Props {
   ticketId: number;
@@ -242,6 +243,13 @@ export function TicketDrawer({
               decision={detail.navigator_decision}
               personas={personas}
               skills={skills}
+              onError={onError}
+              onChanged={refreshAll}
+            />
+
+            <SubdivisionPanel
+              ticketId={ticketId}
+              parentTicketId={detail.parent_ticket_id ?? null}
               onError={onError}
               onChanged={refreshAll}
             />

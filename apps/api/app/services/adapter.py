@@ -58,6 +58,22 @@ def _write_simulated_output(run: AgentRun) -> dict:
     return sentinel
 
 
+def _write_sim_log(run: AgentRun) -> None:
+    """A small deterministic 'session log' so the board's live view has something to
+    tail in simulated mode (real mode pipes the tmux pane into this same file)."""
+    if not run.log_path:
+        return
+    Path(run.log_path).write_text(
+        f"$ {run.agent} --model {run.model}\n"
+        f"[session] persona={run.persona}\n"
+        f"[session] reading ticket {run.ticket.ticket_number} ...\n"
+        f"[session] producing deliverable ...\n"
+        f"[session] wrote {run.output_path}/result.md\n"
+        f"[session] done.\n",
+        encoding="utf-8",
+    )
+
+
 def _spawn_real(run: AgentRun) -> str | None:
     """Best-effort real CLI spawn. Returns a process id string, or None on failure."""
     out = Path(run.output_path)
@@ -86,6 +102,7 @@ def execute_run(db: Session, run: AgentRun) -> None:
     out = Path(run.output_path)
     out.mkdir(parents=True, exist_ok=True)
     (out / "prompt.md").write_text(run.prompt_md, encoding="utf-8")
+    run.log_path = str(out / "run.log")  # the board's live view tails this (§13)
 
     run.status = "running"
     run.started_at = datetime.utcnow()
@@ -97,9 +114,11 @@ def execute_run(db: Session, run: AgentRun) -> None:
         else:  # fall back to simulated so the lifecycle still completes
             run.process_id = f"sim-{run.id}"
             _write_simulated_output(run)
+            _write_sim_log(run)
     else:
         run.process_id = f"sim-{run.id}"
         _write_simulated_output(run)
+        _write_sim_log(run)
 
     db.flush()
 

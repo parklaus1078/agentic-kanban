@@ -93,6 +93,68 @@ export interface UpdateProjectBody {
   description?: string | null;
 }
 
+// ---- Phase 5/6/7/8 UI shapes ----
+export interface ModelInfo {
+  id: string;
+  display: string;
+  latest: boolean;
+  default: boolean;
+  effort: string[];
+}
+export interface ModelsForBrain {
+  brain: string;
+  default: string;
+  models: ModelInfo[];
+}
+export interface PermissionPreset {
+  key: string;
+  label: string;
+  claude_mode: string;
+  codex_sandbox: string;
+  codex_approval: string;
+}
+export interface PermissionProfile {
+  brain: string;
+  preset: string;
+  allow: string[];
+  deny: string[];
+  flags: string[];
+}
+export interface SubdivisionProposal {
+  id: number;
+  parent_ticket_id: number;
+  proposed_children_json: {
+    title: string;
+    description_md: string;
+    acceptance_criteria_md: string;
+  }[];
+  status: string;
+  created_by: string;
+  created_at: string;
+}
+export interface MemoryHit {
+  wiki_path: string;
+  chunk: string;
+  outcome: string | null;
+  score: number;
+}
+export interface GeneratedSkill {
+  id: number;
+  slug: string;
+  kind: string;
+  suggested_ref: string | null;
+  status: string;
+  risk_level: string;
+  approved_by: string | null;
+  source_concept_path: string | null;
+  body_md: string;
+}
+export interface RunLog {
+  offset: number;
+  content: string;
+  eof: boolean;
+}
+
 export interface Ticket {
   id: number;
   board_id: number;
@@ -109,6 +171,8 @@ export interface Ticket {
   started_at: string | null;
   completed_at: string | null;
   canceled_at: string | null;
+  parent_ticket_id?: number | null;
+  auto_complete_parent?: boolean;
 }
 
 export interface Comment {
@@ -446,6 +510,47 @@ export const api = {
     request<Project>('POST', `/projects/${id}/archive`),
   listBoardTemplates: () =>
     request<BoardTemplate[]>('GET', '/board-templates'),
+
+  // models / permissions (Phase 5)
+  listModels: (brain: string) =>
+    request<ModelsForBrain>('GET', `/models?brain=${brain}`),
+  listPermissionPresets: () =>
+    request<{ default: string; presets: PermissionPreset[] }>('GET', '/permission-presets'),
+  getAgentPermissions: (brain: string) =>
+    request<PermissionProfile>('GET', `/agents/${brain}/permissions`),
+  setAgentPermissions: (brain: string, body: { preset: string; allow?: string[]; deny?: string[] }) =>
+    request<PermissionProfile>('PUT', `/agents/${brain}/permissions`, body),
+
+  // subdivision (Phase 6)
+  subdivide: (ticketId: number) =>
+    request<SubdivisionProposal>('POST', `/tickets/${ticketId}/subdivide`),
+  getSubdivision: (ticketId: number) =>
+    request<SubdivisionProposal | null>('GET', `/tickets/${ticketId}/subdivision`),
+  approveSubdivision: (proposalId: number) =>
+    request<Ticket[]>('POST', `/subdivisions/${proposalId}/approve`),
+  rejectSubdivision: (proposalId: number) =>
+    request<SubdivisionProposal>('POST', `/subdivisions/${proposalId}/reject`),
+
+  // memory / skills (Phase 7/8)
+  memorySearch: (q: string, k = 6) =>
+    request<MemoryHit[]>('GET', `/memory/search?q=${encodeURIComponent(q)}&k=${k}`),
+  reindexMemory: () =>
+    request<{ indexed_chunks: number }>('POST', '/memory/reindex'),
+  listGeneratedSkills: () =>
+    request<GeneratedSkill[]>('GET', '/skills/generated'),
+  evolveSkill: (lesson: string, sourceConceptPath?: string) =>
+    request<GeneratedSkill>('POST', '/skills/evolve', {
+      lesson,
+      source_concept_path: sourceConceptPath ?? null,
+    }),
+  acceptGeneratedSkill: (id: number) =>
+    request<GeneratedSkill>('POST', `/skills/generated/${id}/accept`),
+  rejectGeneratedSkill: (id: number) =>
+    request<GeneratedSkill>('POST', `/skills/generated/${id}/reject`),
+
+  // run log (Phase 5/§13)
+  getRunLog: (runId: number, offset = 0) =>
+    request<RunLog>('GET', `/runs/${runId}/log?offset=${offset}`),
 
   // status blocks
   listStatusBlocks: (boardId: number) =>

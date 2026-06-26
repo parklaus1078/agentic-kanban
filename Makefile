@@ -15,7 +15,7 @@ COMPOSE  := docker compose -f infra/docker-compose.yml --project-directory .
 API_BASE ?= http://localhost:8000
 
 .DEFAULT_GOAL := help
-.PHONY: help install up down logs ps seed demo test web-build compose-validate
+.PHONY: help install up down logs ps seed demo test web-build compose-validate host-daemon
 
 help:
 	@echo "Agent System v2 — make targets:"
@@ -61,3 +61,9 @@ web-build:
 
 compose-validate:
 	$(COMPOSE) config
+
+# Phase 5C — real interactive executor. Runs on the HOST (not Docker) so it can use
+# host tmux + the logged-in claude/codex CLI. Postgres is reached on localhost:5432.
+host-daemon:
+	cd apps/api && DATABASE_URL=postgresql+psycopg://asv2:asv2@localhost:5432/asv2 \
+	  ASV2_AGENT_MODE=real python -m app.host_daemon

@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import {
   api,
   type AgentRun,
@@ -6,6 +6,41 @@ import {
   type AgentRunStatus,
 } from '../api';
 import { errMsg, fmtDate } from '../util';
+
+/** Live tail of a run's session log (polling; §13). */
+function RunLogTail({ runId, live }: { runId: number; live: boolean }) {
+  const [content, setContent] = useState('');
+  useEffect(() => {
+    let offset = 0;
+    let stopped = false;
+    async function poll() {
+      try {
+        const r = await api.getRunLog(runId, offset);
+        if (stopped) return;
+        if (r.content) {
+          setContent((c) => c + r.content);
+          offset = r.offset;
+        }
+        if (!r.eof && live) setTimeout(() => void poll(), 800);
+      } catch {
+        /* transient; stop polling */
+      }
+    }
+    void poll();
+    return () => {
+      stopped = true;
+    };
+  }, [runId, live]);
+  if (!content) return null;
+  return (
+    <div className="run-log">
+      <div className="run-log-head">
+        <span className={live ? 'live-dot' : 'live-dot off'} /> session log
+      </div>
+      <pre className="run-log-body">{content}</pre>
+    </div>
+  );
+}
 
 interface Props {
   ticketId: number;
@@ -175,6 +210,11 @@ export function RunMonitor({ ticketId, runs, onError, onChanged }: Props) {
                         </span>
                       </div>
                     )}
+
+                    <RunLogTail
+                      runId={r.id}
+                      live={r.status === 'running' || r.status === 'queued'}
+                    />
 
                     <h4>Artifacts ({detail.artifacts.length})</h4>
                     {detail.artifacts.length === 0 && (

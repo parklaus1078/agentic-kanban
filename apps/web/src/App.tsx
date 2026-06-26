@@ -10,6 +10,7 @@ import {
   type Ticket,
 } from './api';
 import { errMsg } from './util';
+import { ConsoleScreen } from './components/ConsoleScreen';
 import { KanbanBoard } from './components/KanbanBoard';
 import { ProjectsScreen } from './components/ProjectsScreen';
 import { QueuePanel } from './components/QueuePanel';
@@ -19,6 +20,7 @@ import { TicketDrawer } from './components/TicketDrawer';
 
 export default function App() {
   const [project, setProject] = useState<Project | null>(null);
+  const [showConsole, setShowConsole] = useState(false);
   const [boardId, setBoardId] = useState<number | null>(null);
   const [board, setBoard] = useState<Board | null>(null);
   const [tickets, setTickets] = useState<Ticket[]>([]);
@@ -159,6 +161,13 @@ export default function App() {
           )}
         </div>
         <div className="topbar-actions">
+          <button
+            className="btn btn-secondary"
+            onClick={() => setShowConsole((s) => !s)}
+            title="Models, permissions, memory & skills"
+          >
+            {showConsole ? '← Board' : 'Console'}
+          </button>
           <button className="btn btn-secondary" disabled={busy} onClick={doSeed}>
             Seed
           </button>
@@ -208,7 +217,9 @@ export default function App() {
         </div>
       )}
 
-      {project ? (
+      {showConsole ? (
+        <ConsoleScreen onError={handleError} onNotice={handleError} />
+      ) : project ? (
       <main className="layout">
         <section className="board-area">
           {board ? (
