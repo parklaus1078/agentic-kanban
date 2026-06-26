@@ -14,6 +14,11 @@ ENV PYTHONUNBUFFERED=1 \
 
 WORKDIR /app
 
+# postgresql-client provides pg_dump for the Phase 3 durability snapshots.
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends postgresql-client \
+    && rm -rf /var/lib/apt/lists/*
+
 # Install dependencies first for better layer caching.
 # psycopg[binary] ships the libpq binary wheel, so no system libpq is needed.
 COPY apps/api/requirements.txt ./requirements.txt

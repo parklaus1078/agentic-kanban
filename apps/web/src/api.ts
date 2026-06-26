@@ -48,16 +48,49 @@ export interface StatusBlock {
   order_index: number;
   color: string;
   is_agent_digestible: boolean;
+  digest_policy?: string; // "none" | "agent_execute" — entering this status triggers a run
   is_terminal: boolean;
 }
 
 export interface Board {
   id: number;
+  project_id?: number | null;
   name: string;
   description: string | null;
   created_at: string;
   updated_at: string;
   status_blocks?: StatusBlock[];
+}
+
+export interface Project {
+  id: number;
+  slug: string;
+  title: string;
+  description: string | null;
+  board_template_id: number | null;
+  status: string; // "active" | "archived"
+  board_id: number | null;
+  created_at: string;
+}
+
+export interface BoardTemplate {
+  id: number;
+  name: string;
+  default_statuses_json: string[];
+  default_digest_policy: string;
+}
+
+export interface CreateProjectBody {
+  title: string;
+  slug?: string;
+  description?: string | null;
+  board_template_id?: number | null;
+}
+
+export interface UpdateProjectBody {
+  title?: string;
+  slug?: string;
+  description?: string | null;
 }
 
 export interface Ticket {
@@ -401,6 +434,18 @@ export const api = {
     request<Board>('POST', '/boards', body),
   getBoard: (boardId: number) =>
     request<Board>('GET', `/boards/${boardId}`),
+
+  // projects + board templates
+  listProjects: () => request<Project[]>('GET', '/projects'),
+  getProject: (id: number) => request<Project>('GET', `/projects/${id}`),
+  createProject: (body: CreateProjectBody) =>
+    request<Project>('POST', '/projects', body),
+  updateProject: (id: number, body: UpdateProjectBody) =>
+    request<Project>('PATCH', `/projects/${id}`, body),
+  archiveProject: (id: number) =>
+    request<Project>('POST', `/projects/${id}/archive`),
+  listBoardTemplates: () =>
+    request<BoardTemplate[]>('GET', '/board-templates'),
 
   // status blocks
   listStatusBlocks: (boardId: number) =>

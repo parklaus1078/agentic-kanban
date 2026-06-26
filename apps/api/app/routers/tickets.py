@@ -5,10 +5,10 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from .. import schemas, seed
+from .. import schemas, seed, transitions as T
 from ..db import get_db
-from ..models import Board, Comment, Persona, Ticket
-from ..services import lifecycle, navigator, review, runs
+from ..models import Board, Comment, Persona, StatusBlock, SubdivisionProposal, Ticket
+from ..services import lifecycle, navigator, review, runs, subdivision
 
 router = APIRouter(tags=["tickets"])
 
@@ -84,6 +84,24 @@ def add_comment(ticket_id: int, body: schemas.CommentCreate, db: Session = Depen
     return comment
 
 
+def _has_active_run(ticket: Ticket) -> bool:
+    return any(r.status in ("queued", "running") for r in ticket.runs)
+
+
+def _maybe_auto_dispatch(db: Session, ticket: Ticket) -> None:
+    """Entering an `agent_execute` status is the trigger: auto-run the Navigator and
+    enqueue a run (drag = execute). Guarded so re-entry or an already-active run does
+    not create duplicates. The worker drives execution off the queue from here."""
+    block = db.get(StatusBlock, ticket.status_block_id)
+    if block is None or block.digest_policy != T.DIGEST_AGENT_EXECUTE:
+        return
+    if _has_active_run(ticket):
+        return
+    decision = navigator.recommend(db, ticket, None)
+    runs.create_run(db, ticket, decision.persona, decision.agent,
+                    decision.model, decision.skills_json)
+
+
 @router.post("/tickets/{ticket_id}/transition", response_model=schemas.TransitionResult)
 def transition(ticket_id: int, body: schemas.TransitionRequest, db: Session = Depends(get_db)):
     ticket = _get_ticket(db, ticket_id)
@@ -93,6 +111,7 @@ def transition(ticket_id: int, body: schemas.TransitionRequest, db: Session = De
         raise HTTPException(409, str(exc))
     except ValueError as exc:
         raise HTTPException(400, str(exc))
+    _maybe_auto_dispatch(db, ticket)
     db.commit()
     db.refresh(ticket)
     db.refresh(event)
@@ -130,6 +149,60 @@ def create_run(ticket_id: int, body: schemas.RunCreate, db: Session = Depends(ge
     db.commit()
     db.refresh(run)
     return run
+
+
+@router.post("/tickets/{ticket_id}/orchestrate")
+def orchestrate(ticket_id: int, db: Session = Depends(get_db)):
+    """Drive one ticket through the LangGraph lifecycle (navigate→dispatch→watch).
+    Lazy import keeps the app bootable even before langgraph is installed."""
+    _get_ticket(db, ticket_id)
+    from ..services import orchestrator
+
+    state = orchestrator.run_ticket(ticket_id)
+    db.expire_all()
+    ticket = _get_ticket(db, ticket_id)
+    return {"ticket_id": ticket_id, "status": ticket.status, "run_id": state.get("run_id")}
+
+
+@router.post("/tickets/{ticket_id}/subdivide", response_model=schemas.SubdivisionProposalOut)
+def subdivide(ticket_id: int, db: Session = Depends(get_db)):
+    ticket = _get_ticket(db, ticket_id)
+    proposal = subdivision.propose(db, ticket)
+    db.commit()
+    db.refresh(proposal)
+    return proposal
+
+
+@router.get("/tickets/{ticket_id}/subdivision", response_model=schemas.SubdivisionProposalOut | None)
+def get_subdivision(ticket_id: int, db: Session = Depends(get_db)):
+    _get_ticket(db, ticket_id)
+    return db.scalars(
+        select(SubdivisionProposal)
+        .where(SubdivisionProposal.parent_ticket_id == ticket_id)
+        .order_by(SubdivisionProposal.id.desc())
+    ).first()
+
+
+def _get_proposal(db: Session, proposal_id: int) -> SubdivisionProposal:
+    prop = db.get(SubdivisionProposal, proposal_id)
+    if prop is None:
+        raise HTTPException(404, f"Subdivision proposal {proposal_id} not found")
+    return prop
+
+
+@router.post("/subdivisions/{proposal_id}/approve", response_model=list[schemas.TicketOut])
+def approve_subdivision(proposal_id: int, db: Session = Depends(get_db)):
+    children = subdivision.approve(db, _get_proposal(db, proposal_id))
+    db.commit()
+    return children
+
+
+@router.post("/subdivisions/{proposal_id}/reject", response_model=schemas.SubdivisionProposalOut)
+def reject_subdivision(proposal_id: int, db: Session = Depends(get_db)):
+    prop = subdivision.reject(db, _get_proposal(db, proposal_id))
+    db.commit()
+    db.refresh(prop)
+    return prop
 
 
 @router.post("/tickets/{ticket_id}/review", response_model=schemas.ReviewResult)

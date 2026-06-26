@@ -10,6 +10,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from ..models import NavigatorDecision, Persona, Skill, Ticket
+from . import rag
 
 DEFAULT_PERSONA = "Full Stack Developer"
 
@@ -73,7 +74,9 @@ def _recommend_skills(db: Session, persona_name: str, context: str, limit: int =
     return chosen
 
 
-def recommend(db: Session, ticket: Ticket, override: dict | None = None) -> NavigatorDecision:
+def recommend(
+    db: Session, ticket: Ticket, override: dict | None = None, task_kind: str = "execute"
+) -> NavigatorDecision:
     override = override or {}
     context = _context(ticket)
     scores = _score_personas(context)
@@ -92,6 +95,17 @@ def recommend(db: Session, ticket: Ticket, override: dict | None = None) -> Navi
         confidence = round(min(0.95, max(0.45, 0.55 + 0.07 * best_score + 0.05 * margin)), 2)
         reason = (f"Persona '{persona_name}' scored highest ({best_score} keyword hits, "
                   f"margin {margin}). Mapped to its default agent/model.")
+
+    if task_kind == "subdivide" and not override.get("persona"):
+        # Subdivision is a planning task → route to a planning persona (CTO for
+        # technical work, else PM) with planning-focused plugins (superpowers/gstacks).
+        technical = any(k in context for k in (
+            "architecture", "system", "backend", "frontend", "infra", "api",
+            "database", "deploy", "code", "build", "app", "kubernetes", "docker"))
+        persona_name = "CTO" if technical else "PM"
+        confidence = max(confidence, 0.75)
+        reason = (f"Subdivision routed to '{persona_name}' (planning persona) with planning "
+                  f"plugins (superpowers/gstacks). " + reason)
 
     if override.get("persona"):
         persona_name = override["persona"]
@@ -131,7 +145,8 @@ def recommend(db: Session, ticket: Ticket, override: dict | None = None) -> Navi
     decision = NavigatorDecision(
         ticket_id=ticket.id, persona=persona_name, agent=agent, model=model,
         skills_json=skills, confidence=confidence, reason=reason,
-        alternatives_json=alternatives, manual_override=manual,
+        alternatives_json=alternatives, manual_override=manual, task_kind=task_kind,
+        rag_context_refs=[h["wiki_path"] for h in rag.search(db, context, k=3)],
     )
     db.add(decision)
     ticket.assignee_persona = persona_name

@@ -4,19 +4,21 @@ import {
   api,
   type Board,
   type Persona,
+  type Project,
   type QueueItem,
   type Skill,
   type Ticket,
 } from './api';
 import { errMsg } from './util';
 import { KanbanBoard } from './components/KanbanBoard';
+import { ProjectsScreen } from './components/ProjectsScreen';
 import { QueuePanel } from './components/QueuePanel';
 import { StatusBlockManager } from './components/StatusBlockManager';
 import { TicketFormModal } from './components/TicketFormModal';
 import { TicketDrawer } from './components/TicketDrawer';
 
 export default function App() {
-  const [boards, setBoards] = useState<Board[]>([]);
+  const [project, setProject] = useState<Project | null>(null);
   const [boardId, setBoardId] = useState<number | null>(null);
   const [board, setBoard] = useState<Board | null>(null);
   const [tickets, setTickets] = useState<Ticket[]>([]);
@@ -50,7 +52,6 @@ export default function App() {
     async (preferId?: number) => {
       try {
         const list = await api.listBoards();
-        setBoards(list);
         setBoardId((current) => {
           if (preferId != null && list.some((b) => b.id === preferId)) {
             return preferId;
@@ -132,26 +133,32 @@ export default function App() {
     });
   }
 
+  function openProject(p: Project) {
+    setProject(p);
+    setBoardId(p.board_id ?? null);
+    setSelectedTicketId(null);
+  }
+
   return (
     <div className="app">
       <header className="topbar">
         <div className="brand">
-          Agent System v2 <span className="muted">ops console</span>
+          {project ? (
+            <>
+              <button className="brand-back" onClick={() => setProject(null)}>
+                ← Projects
+              </button>
+              <span className="brand-proj" title={project.slug}>
+                {project.title}
+              </span>
+            </>
+          ) : (
+            <>
+              Agent System v2 <span className="muted">ops console</span>
+            </>
+          )}
         </div>
         <div className="topbar-actions">
-          {boards.length > 0 && (
-            <select
-              value={boardId ?? ''}
-              onChange={(e) => setBoardId(Number(e.target.value))}
-              title="board"
-            >
-              {boards.map((b) => (
-                <option key={b.id} value={b.id}>
-                  {b.name}
-                </option>
-              ))}
-            </select>
-          )}
           <button className="btn btn-secondary" disabled={busy} onClick={doSeed}>
             Seed
           </button>
@@ -201,6 +208,7 @@ export default function App() {
         </div>
       )}
 
+      {project ? (
       <main className="layout">
         <section className="board-area">
           {board ? (
@@ -243,6 +251,9 @@ export default function App() {
           )}
         </aside>
       </main>
+      ) : (
+        <ProjectsScreen onOpen={openProject} onError={handleError} />
+      )}
 
       {showCreate && boardId != null && (
         <TicketFormModal

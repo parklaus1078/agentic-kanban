@@ -21,6 +21,7 @@ from sqlalchemy.orm import Session
 from .config import settings
 from .db import SessionLocal, init_db
 from .models import StatusEvent, WikiSyncJob
+from .services import durability
 
 
 def _raw_dir() -> Path:
@@ -71,8 +72,22 @@ def audit(db: Session) -> dict:
     return summary
 
 
+def snapshot_once() -> str | None:
+    """Phase 3: dump Postgres to /mnt/k and prune. No-op on SQLite."""
+    stamp = (datetime.utcnow() + timedelta(hours=settings.tz_offset_hours)).strftime(
+        "%Y%m%d-%H%M%S"
+    )
+    path = durability.create_snapshot(stamp)
+    durability.prune_snapshots()
+    print(f"[scheduler] snapshot: {path or 'skipped (non-postgres)'}", flush=True)
+    return path
+
+
 def _run_once(which: str) -> None:
     init_db()
+    if which == "snapshot":
+        snapshot_once()
+        return
     db = SessionLocal()
     try:
         ingest(db) if which == "ingest" else audit(db)
@@ -82,9 +97,14 @@ def _run_once(which: str) -> None:
 
 def main() -> None:
     init_db()
-    print("[scheduler] started (ingest 02:00 KST daily, audit 04:00 KST month-end)", flush=True)
+    print(
+        "[scheduler] started (ingest 02:00 KST, audit 04:00 KST month-end, "
+        f"snapshot every {settings.snapshot_interval_minutes}m)",
+        flush=True,
+    )
     last_ingest_day = ""
     last_audit_day = ""
+    last_snapshot_ts = 0.0
     while True:
         kst = datetime.utcnow() + timedelta(hours=settings.tz_offset_hours)
         day = kst.strftime("%Y-%m-%d")
@@ -101,11 +121,20 @@ def main() -> None:
             print(f"[scheduler] error: {exc}", flush=True)
         finally:
             db.close()
+        # Periodic durability snapshot (Phase 3).
+        if settings.snapshot_interval_minutes > 0:
+            now = time.monotonic()
+            if now - last_snapshot_ts >= settings.snapshot_interval_minutes * 60:
+                try:
+                    snapshot_once()
+                except Exception as exc:
+                    print(f"[scheduler] snapshot error: {exc}", flush=True)
+                last_snapshot_ts = now
         time.sleep(30)
 
 
 if __name__ == "__main__":
-    if len(sys.argv) > 1 and sys.argv[1] in {"ingest", "audit"}:
+    if len(sys.argv) > 1 and sys.argv[1] in {"ingest", "audit", "snapshot"}:
         _run_once(sys.argv[1])
     else:
         main()

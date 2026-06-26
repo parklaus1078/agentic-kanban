@@ -18,6 +18,7 @@ class StatusBlockOut(_ORM):
     order_index: int
     color: str
     is_agent_digestible: bool
+    digest_policy: str = "none"
     is_terminal: bool
 
 
@@ -38,6 +39,7 @@ class StatusBlockUpdate(BaseModel):
 
 class BoardOut(_ORM):
     id: int
+    project_id: int | None = None
     name: str
     description: str | None = None
     created_at: datetime
@@ -49,6 +51,38 @@ class BoardCreate(BaseModel):
     name: str
     description: str | None = None
     seed_default_statuses: bool = True
+
+
+# ---------- Projects / board templates ----------
+class BoardTemplateOut(_ORM):
+    id: int
+    name: str
+    default_statuses_json: list = []
+    default_digest_policy: str
+
+
+class ProjectOut(_ORM):
+    id: int
+    slug: str
+    title: str
+    description: str | None = None
+    board_template_id: int | None = None
+    status: str
+    board_id: int | None = None
+    created_at: datetime
+
+
+class ProjectCreate(BaseModel):
+    title: str
+    slug: str | None = None
+    description: str | None = None
+    board_template_id: int | None = None
+
+
+class ProjectUpdate(BaseModel):
+    title: str | None = None
+    slug: str | None = None
+    description: str | None = None
 
 
 # ---------- Tickets ----------
@@ -68,6 +102,17 @@ class TicketOut(_ORM):
     started_at: datetime | None = None
     completed_at: datetime | None = None
     canceled_at: datetime | None = None
+    parent_ticket_id: int | None = None
+    auto_complete_parent: bool = True
+
+
+class SubdivisionProposalOut(_ORM):
+    id: int
+    parent_ticket_id: int
+    proposed_children_json: list = []
+    status: str
+    created_by: str
+    created_at: datetime
 
 
 class TicketCreate(BaseModel):
@@ -85,6 +130,7 @@ class TicketUpdate(BaseModel):
     acceptance_criteria_md: str | None = None
     assignee_persona: str | None = None
     priority: int | None = None
+    auto_complete_parent: bool | None = None
 
 
 # ---------- Comments ----------

@@ -10,7 +10,7 @@ from sqlalchemy.orm import Session
 
 from .. import transitions as T
 from ..models import AgentRun, Comment, Ticket
-from . import lifecycle, runs
+from . import lifecycle, runs, subdivision
 
 
 def review_ticket(
@@ -24,6 +24,7 @@ def review_ticket(
     if satisfied:
         lifecycle.transition_ticket(db, ticket, T.COMPLETED, actor=actor,
                                     reason_md=comment_md or "Approved by Kay.")
+        subdivision.maybe_autocomplete_parent(db, ticket)  # roll up to parent epic (§8)
         db.commit()
         db.refresh(ticket)
         return ticket, None

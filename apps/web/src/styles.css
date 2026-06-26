@@ -713,3 +713,210 @@ textarea {
   color: var(--danger);
   white-space: pre-wrap;
 }
+
+/* ===================== Phase 2: projects + responsive shell ===================== */
+.brand {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.brand-back {
+  background: transparent;
+  color: #cbd5e1;
+  border: 1px solid #334155;
+  border-radius: 6px;
+  padding: 4px 10px;
+  font-size: 12px;
+  cursor: pointer;
+}
+.brand-back:hover {
+  border-color: #4fd6c9;
+  color: #fff;
+}
+.brand-proj {
+  font-weight: 700;
+  font-size: 16px;
+  color: #f1f5f9;
+}
+
+/* Workspace landing — a calm control-room surface that echoes the topbar.
+   The grid auto-fills, so it stays dense from 1080p up to 4K. */
+.proj-screen {
+  flex: 1;
+  background: radial-gradient(
+      1200px 600px at 15% -10%,
+      rgba(79, 214, 201, 0.1),
+      transparent 60%
+    ),
+    radial-gradient(900px 500px at 100% 0%, rgba(154, 140, 255, 0.1), transparent 55%),
+    #0b1220;
+  color: #e6edf6;
+  padding: clamp(28px, 5vw, 72px);
+  overflow-y: auto;
+}
+.proj-screen > * {
+  width: 100%;
+  max-width: clamp(960px, 92vw, 2200px);
+  margin-inline: auto;
+}
+.proj-eyebrow {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  text-transform: uppercase;
+  letter-spacing: 0.28em;
+  font-size: 11px;
+  color: #4fd6c9;
+  margin: 0 0 10px;
+}
+.proj-headline {
+  font-size: clamp(34px, 4.5vw, 64px);
+  line-height: 1.02;
+  letter-spacing: -0.02em;
+  margin: 0 0 12px;
+  font-weight: 720;
+}
+.proj-sub {
+  color: #93a3b8;
+  font-size: clamp(14px, 1.1vw, 17px);
+  max-width: 60ch;
+  margin: 0 0 28px;
+}
+.proj-sub .mono {
+  color: #cbd5e1;
+}
+.proj-new {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-bottom: 32px;
+}
+.proj-new-name {
+  flex: 1 1 280px;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid #243244;
+  border-radius: 8px;
+  padding: 10px 14px;
+  color: #e6edf6;
+  font-size: 15px;
+}
+.proj-new-name::placeholder {
+  color: #5d6b80;
+}
+.proj-new-name:focus,
+.proj-new select:focus {
+  outline: 2px solid #4fd6c9;
+  outline-offset: 1px;
+}
+.proj-new select {
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid #243244;
+  border-radius: 8px;
+  padding: 10px 12px;
+  color: #e6edf6;
+}
+.proj-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(clamp(260px, 22vw, 340px), 1fr));
+  gap: 18px;
+}
+.proj-card {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  background: #0f1a2b;
+  border: 1px solid #20304a;
+  border-radius: 14px;
+  overflow: hidden;
+  transition: transform 0.12s ease, border-color 0.12s ease;
+}
+.proj-card::before {
+  /* status spine — the signature instrument cue */
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 3px;
+  background: #4fd6c9;
+}
+.proj-card.is-archived {
+  opacity: 0.6;
+}
+.proj-card.is-archived::before {
+  background: #475569;
+}
+.proj-card:hover {
+  transform: translateY(-2px);
+  border-color: #4fd6c9;
+}
+.proj-card-open {
+  flex: 1;
+  text-align: left;
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  color: inherit;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 20px 20px 18px 24px;
+}
+.proj-card-slug {
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  color: #4fd6c9;
+}
+.proj-card-title {
+  font-size: 19px;
+  font-weight: 650;
+  color: #f1f5f9;
+}
+.proj-card-desc {
+  font-size: 13px;
+  color: #8a9bb2;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.proj-card-enter {
+  margin-top: auto;
+  padding-top: 10px;
+  font-size: 13px;
+  color: #93a3b8;
+}
+.proj-card:hover .proj-card-enter {
+  color: #4fd6c9;
+}
+.proj-card-archive {
+  align-self: flex-end;
+  margin: 0 14px 12px;
+  background: transparent;
+  color: #6b7a90;
+  border: 1px solid #20304a;
+  border-radius: 6px;
+  padding: 3px 10px;
+  font-size: 11px;
+  cursor: pointer;
+}
+.proj-card-archive:hover {
+  color: #f87171;
+  border-color: #f87171;
+}
+.proj-empty {
+  padding: 24px 0;
+}
+.proj-archived-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 24px;
+  color: #8a9bb2;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .proj-card {
+    transition: none;
+  }
+}

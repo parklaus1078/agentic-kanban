@@ -30,11 +30,15 @@ def _utcnow() -> datetime:
 class Board(Base):
     __tablename__ = "boards"
     id: Mapped[int] = mapped_column(primary_key=True)
+    project_id: Mapped[int | None] = mapped_column(
+        ForeignKey("projects.id", ondelete="CASCADE"), default=None
+    )
     name: Mapped[str] = mapped_column(String(200))
     description: Mapped[str | None] = mapped_column(Text, default=None)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=_utcnow)
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=_utcnow, onupdate=_utcnow)
 
+    project: Mapped["Project | None"] = relationship(back_populates="boards")
     status_blocks: Mapped[list["StatusBlock"]] = relationship(
         back_populates="board", cascade="all, delete-orphan", order_by="StatusBlock.order_index"
     )
@@ -50,6 +54,100 @@ class BoardTemplate(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime, default=_utcnow)
 
 
+class Project(Base):
+    """A project sits above boards: slug/title, an optional source template, and a
+    soft-delete (archive) status. Creating a project provisions its first board."""
+    __tablename__ = "projects"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    slug: Mapped[str] = mapped_column(String(120), unique=True, index=True)
+    title: Mapped[str] = mapped_column(String(200))
+    description: Mapped[str | None] = mapped_column(Text, default=None)
+    board_template_id: Mapped[int | None] = mapped_column(
+        ForeignKey("board_templates.id"), default=None
+    )
+    status: Mapped[str] = mapped_column(String(20), default="active")  # active | archived
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=_utcnow)
+
+    boards: Mapped[list["Board"]] = relationship(
+        back_populates="project", order_by="Board.id"
+    )
+
+    @property
+    def board_id(self) -> int | None:
+        return self.boards[0].id if self.boards else None
+
+
+class GeneratedSkill(Base):
+    """Phase 8 — self-evolution (§16.1). A recurring lesson becomes a skill proposal:
+    if a similar installed/market skill exists → ``install_existing`` (Kay accepts →
+    install via CLI); else ``new`` (Kay accepts → generate). Activation is gated."""
+    __tablename__ = "generated_skills"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    slug: Mapped[str] = mapped_column(String(120))
+    source_concept_path: Mapped[str | None] = mapped_column(Text, default=None)
+    kind: Mapped[str] = mapped_column(String(20), default="new")  # install_existing | new
+    suggested_ref: Mapped[str | None] = mapped_column(String(200), default=None)  # existing skill/plugin name
+    body_md: Mapped[str] = mapped_column(Text, default="")
+    status: Mapped[str] = mapped_column(String(20), default="proposed")  # proposed|active|retired
+    risk_level: Mapped[str] = mapped_column(String(20), default="low")
+    approved_by: Mapped[str | None] = mapped_column(String(40), default=None)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=_utcnow)
+
+
+class WikiEmbedding(Base):
+    """RAG index over LLM Wiki *synthesized* pages (Phase 7, §15). Embeddings stored
+    as JSON for portability (SQLite + Postgres); pgvector is the production optimization.
+    Raw sources are never embedded — only the wiki/ pages (cheap-read rule)."""
+    __tablename__ = "wiki_embeddings"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    wiki_path: Mapped[str] = mapped_column(Text)
+    chunk_index: Mapped[int] = mapped_column(Integer, default=0)
+    chunk: Mapped[str] = mapped_column(Text)
+    embedding_json: Mapped[list] = mapped_column(JSON, default=list)
+    page_type: Mapped[str | None] = mapped_column(String(20), default=None)
+    outcome: Mapped[str | None] = mapped_column(String(20), default=None)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=_utcnow, onupdate=_utcnow)
+
+
+class SubdivisionProposal(Base):
+    """A Navigator-routed proposal to split a ticket into child tickets (Phase 6, §8).
+    Kay approves → children are created in Todo with parent_ticket_id set."""
+    __tablename__ = "subdivision_proposals"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    parent_ticket_id: Mapped[int] = mapped_column(ForeignKey("tickets.id", ondelete="CASCADE"))
+    proposed_children_json: Mapped[list] = mapped_column(JSON, default=list)
+    status: Mapped[str] = mapped_column(String(20), default="proposed")  # proposed|approved|rejected
+    created_by: Mapped[str] = mapped_column(String(40), default="Navigator")
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=_utcnow)
+
+
+class AgentPermissionProfile(Base):
+    """Per-brain permission scope (Phase 5, §11). Stores the chosen preset; applied to
+    the CLI settings/config files at session launch (real mode)."""
+    __tablename__ = "agent_permission_profiles"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    brain: Mapped[str] = mapped_column(String(20), unique=True)  # claude | codex
+    preset: Mapped[str] = mapped_column(String(20), default="auto")
+    allow_json: Mapped[list] = mapped_column(JSON, default=list)
+    deny_json: Mapped[list] = mapped_column(JSON, default=list)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=_utcnow, onupdate=_utcnow)
+
+
+class ScheduledJob(Base):
+    """Durable schedule store so cron-like jobs (rate-limit resume, snapshots) can be
+    re-armed after a power cut wipes the OS crontab. Phase 3."""
+    __tablename__ = "scheduled_jobs"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    kind: Mapped[str] = mapped_column(String(40))  # ratelimit_resume | snapshot | ingest | ...
+    run_id: Mapped[int | None] = mapped_column(
+        ForeignKey("agent_runs.id", ondelete="CASCADE"), default=None
+    )
+    fire_at: Mapped[datetime] = mapped_column(DateTime)
+    payload_json: Mapped[dict] = mapped_column(JSON, default=dict)
+    status: Mapped[str] = mapped_column(String(20), default="pending")  # pending|done|canceled
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=_utcnow)
+
+
 class StatusBlock(Base):
     __tablename__ = "status_blocks"
     __table_args__ = (UniqueConstraint("board_id", "name", name="uq_statusblock_board_name"),)
@@ -59,6 +157,8 @@ class StatusBlock(Base):
     order_index: Mapped[int] = mapped_column(Integer, default=0)
     color: Mapped[str] = mapped_column(String(20), default="#9ca3af")
     is_agent_digestible: Mapped[bool] = mapped_column(Boolean, default=False)
+    # What the system does when a ticket ENTERS this block: "none" | "agent_execute".
+    digest_policy: Mapped[str] = mapped_column(String(20), default="none")
     is_terminal: Mapped[bool] = mapped_column(Boolean, default=False)
 
     board: Mapped[Board] = relationship(back_populates="status_blocks")
@@ -80,6 +180,11 @@ class Ticket(Base):
     started_at: Mapped[datetime | None] = mapped_column(DateTime, default=None)
     completed_at: Mapped[datetime | None] = mapped_column(DateTime, default=None)
     canceled_at: Mapped[datetime | None] = mapped_column(DateTime, default=None)
+    # Phase 6 — recursive subdivision (parent epic → child tickets).
+    parent_ticket_id: Mapped[int | None] = mapped_column(
+        ForeignKey("tickets.id", ondelete="CASCADE"), default=None
+    )
+    auto_complete_parent: Mapped[bool] = mapped_column(Boolean, default=True)
 
     board: Mapped[Board] = relationship(back_populates="tickets")
     status_block: Mapped[StatusBlock] = relationship()
@@ -95,6 +200,10 @@ class Ticket(Base):
     navigator_decisions: Mapped[list["NavigatorDecision"]] = relationship(
         back_populates="ticket", cascade="all, delete-orphan", order_by="NavigatorDecision.created_at"
     )
+    parent: Mapped["Ticket | None"] = relationship(
+        "Ticket", remote_side="Ticket.id", back_populates="children"
+    )
+    children: Mapped[list["Ticket"]] = relationship("Ticket", back_populates="parent")
 
     @property
     def status(self) -> str:
@@ -175,6 +284,8 @@ class NavigatorDecision(Base):
     reason: Mapped[str] = mapped_column(Text, default="")
     alternatives_json: Mapped[list] = mapped_column(JSON, default=list)
     manual_override: Mapped[bool] = mapped_column(Boolean, default=False)
+    task_kind: Mapped[str] = mapped_column(String(20), default="execute")  # execute | subdivide
+    rag_context_refs: Mapped[list] = mapped_column(JSON, default=list)  # wiki pages injected (§15)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=_utcnow)
 
     ticket: Mapped[Ticket] = relationship(back_populates="navigator_decisions")
@@ -205,6 +316,12 @@ class AgentRun(Base):
     started_at: Mapped[datetime | None] = mapped_column(DateTime, default=None)
     finished_at: Mapped[datetime | None] = mapped_column(DateTime, default=None)
     error: Mapped[str | None] = mapped_column(Text, default=None)
+    # Phase 5 — interactive tmux execution + live log + fallback/rate-limit.
+    log_path: Mapped[str | None] = mapped_column(Text, default=None)
+    tmux_window: Mapped[str | None] = mapped_column(String(80), default=None)
+    cli_session_id: Mapped[str | None] = mapped_column(String(120), default=None)
+    rate_limit_until: Mapped[datetime | None] = mapped_column(DateTime, default=None)
+    fallback_used: Mapped[bool] = mapped_column(Boolean, default=False)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=_utcnow)
 
     ticket: Mapped[Ticket] = relationship(back_populates="runs")

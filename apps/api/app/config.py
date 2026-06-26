@@ -32,6 +32,12 @@ class Settings(BaseSettings):
     autoseed: bool = True
     tz_offset_hours: int = 9  # Asia/Seoul (no DST)
 
+    # Phase 3 — durability / fail-safe. This machine loses WSL/containers/tmux to
+    # power cuts, so we dump Postgres OUTSIDE WSL (on /mnt/k) and restore on boot.
+    snapshot_dir: str = "/mnt/k/WSL_volume/asv2/snapshots"
+    snapshot_keep: int = 24
+    snapshot_interval_minutes: int = 15
+
     model_config = SettingsConfigDict(env_prefix="ASV2_", env_file=".env", extra="ignore")
 
 

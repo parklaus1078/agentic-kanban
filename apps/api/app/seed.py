@@ -8,7 +8,7 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from . import transitions as T
-from .models import Board, BoardTemplate, Persona, Skill, StatusBlock, Ticket
+from .models import Board, BoardTemplate, Persona, Project, Skill, StatusBlock, Ticket
 
 DEFAULT_STATUSES = [
     # (name, color, is_agent_digestible, is_terminal)
@@ -92,6 +92,7 @@ def seed_statuses(db: Session, board: Board) -> None:
         db.add(StatusBlock(
             board_id=board.id, name=name, order_index=i, color=color,
             is_agent_digestible=digest, is_terminal=terminal,
+            digest_policy=(T.DIGEST_AGENT_EXECUTE if name == T.IN_PROGRESS else T.DIGEST_NONE),
         ))
     db.flush()
 
@@ -143,6 +144,18 @@ def get_or_create_default_board(db: Session) -> Board:
     return board
 
 
+def get_or_create_default_project(db: Session, board: Board) -> Project:
+    project = db.scalars(select(Project).order_by(Project.id)).first()
+    if project is None:
+        project = Project(slug="default", title="Default Project",
+                          description="Agent System v2 default project")
+        db.add(project)
+        db.flush()
+    if board.project_id is None:
+        board.project_id = project.id
+    return project
+
+
 def next_ticket_number(db: Session) -> str:
     count = db.scalar(select(func.count()).select_from(Ticket)) or 0
     return f"ASV2-{count + 1:04d}"
@@ -153,6 +166,7 @@ def seed_all(db: Session) -> tuple[Board, int, int]:
     n_personas = seed_personas(db)
     n_skills = seed_skills(db)
     board = get_or_create_default_board(db)
+    get_or_create_default_project(db, board)
     db.commit()
     db.refresh(board)
     return board, n_personas, n_skills

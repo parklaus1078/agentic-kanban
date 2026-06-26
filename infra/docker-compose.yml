@@ -19,6 +19,8 @@ x-asv2-env: &asv2-env
   ASV2_LLM_WIKI_ROOT: "${ASV2_LLM_WIKI_ROOT:-/home/kay/llm_wiki}"
   ASV2_CODEX_OUTPUT_DIR: "${ASV2_CODEX_OUTPUT_DIR:-/mnt/k/WRITTEN_BY_CODEX}"
   ASV2_CLAUDE_OUTPUT_DIR: "${ASV2_CLAUDE_OUTPUT_DIR:-/mnt/k/WRITTEN_BY_CLAUDE}"
+  # Phase 3 durability: Postgres snapshots land OUTSIDE WSL on /mnt/k.
+  ASV2_SNAPSHOT_DIR: "${ASV2_SNAPSHOT_DIR:-/mnt/k/WSL_volume/asv2/snapshots}"
   # Scheduler timezone (02:00 ingest / month-end 04:00 audit jobs).
   TZ: "${TZ:-Asia/Seoul}"
   PYTHONUNBUFFERED: "1"
@@ -28,6 +30,7 @@ x-asv2-volumes: &asv2-volumes
   - "${ASV2_LLM_WIKI_ROOT:-/home/kay/llm_wiki}:${ASV2_LLM_WIKI_ROOT:-/home/kay/llm_wiki}"
   - "${ASV2_CODEX_OUTPUT_DIR:-/mnt/k/WRITTEN_BY_CODEX}:${ASV2_CODEX_OUTPUT_DIR:-/mnt/k/WRITTEN_BY_CODEX}"
   - "${ASV2_CLAUDE_OUTPUT_DIR:-/mnt/k/WRITTEN_BY_CLAUDE}:${ASV2_CLAUDE_OUTPUT_DIR:-/mnt/k/WRITTEN_BY_CLAUDE}"
+  - "${ASV2_SNAPSHOT_DIR:-/mnt/k/WSL_volume/asv2/snapshots}:${ASV2_SNAPSHOT_DIR:-/mnt/k/WSL_volume/asv2/snapshots}"
 
 # ---- shared backend service definition (api/worker/watcher/scheduler) --------
 x-backend: &backend

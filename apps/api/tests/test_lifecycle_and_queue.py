@@ -3,17 +3,57 @@ import pathlib
 from conftest import make_ticket, move
 
 
+def _auto_run(client, ticket_id):
+    """The run auto-enqueued when the ticket entered an `agent_execute` status."""
+    return client.get(f"/tickets/{ticket_id}").json()["runs"][-1]
+
+
 def _to_in_progress(client, board_id, **kw):
     t = make_ticket(client, board_id, **kw)
     move(client, t["id"], "Todo")
-    move(client, t["id"], "In Progress", actor="Hermes")
+    move(client, t["id"], "In Progress")  # entering In Progress auto-enqueues a run
     return t
+
+
+def test_drag_to_in_progress_auto_enqueues_run(client, board_id):
+    # Entering an `agent_execute` status (In Progress) is the trigger: it must
+    # auto-create a queued run + queue item, with no explicit POST /runs.
+    t = make_ticket(client, board_id, title="auto dispatch",
+                    description_md="build a fastapi endpoint and react component")
+    move(client, t["id"], "Todo")
+    assert client.get(f"/tickets/{t['id']}").json()["runs"] == []  # nothing queued yet
+
+    move(client, t["id"], "In Progress")
+
+    td = client.get(f"/tickets/{t['id']}").json()
+    assert len(td["runs"]) == 1
+    run = td["runs"][0]
+    assert run["status"] == "queued" and run["output_path"]
+    assert td["navigator_decision"] is not None
+    q = client.get("/queue").json()
+    assert sum(1 for qi in q if qi["ticket_id"] == t["id"]) == 1
+
+
+def test_non_digestible_status_does_not_dispatch(client, board_id):
+    t = make_ticket(client, board_id)
+    move(client, t["id"], "Todo")  # Todo is not agent_execute
+    assert client.get(f"/tickets/{t['id']}").json()["runs"] == []
+
+
+def test_no_double_dispatch_on_reenter(client, board_id):
+    # Re-entering In Progress while a run is still active must not duplicate.
+    t = make_ticket(client, board_id)
+    move(client, t["id"], "Todo")
+    move(client, t["id"], "In Progress")
+    move(client, t["id"], "Blocked")
+    move(client, t["id"], "In Progress")
+    assert len(client.get(f"/tickets/{t['id']}").json()["runs"]) == 1
 
 
 def test_full_lifecycle_to_completed(client, board_id):
     t = _to_in_progress(client, board_id, title="Implement FastAPI endpoint",
                         description_md="build a react component and fastapi endpoint")
-    run = client.post(f"/tickets/{t['id']}/runs", json={"use_navigator": True}).json()
+    run = _auto_run(client, t["id"])
     assert run["status"] == "queued" and run["output_path"]
 
     assert client.post("/admin/worker/tick").json()["processed"] == [run["id"]]
@@ -42,7 +82,7 @@ def test_full_lifecycle_to_completed(client, board_id):
 
 def test_review_rerun_includes_comment(client, board_id):
     t = _to_in_progress(client, board_id)
-    run = client.post(f"/tickets/{t['id']}/runs", json={"use_navigator": True}).json()
+    run = _auto_run(client, t["id"])
     client.post("/admin/worker/tick")
     client.post("/admin/watcher/tick")
     assert client.get(f"/tickets/{t['id']}").json()["status"] == "Reviewing"
@@ -62,7 +102,7 @@ def test_review_rerun_includes_comment(client, board_id):
 
 def test_failed_run_blocks_ticket(client, board_id):
     t = _to_in_progress(client, board_id)
-    run = client.post(f"/tickets/{t['id']}/runs", json={"use_navigator": True}).json()
+    run = _auto_run(client, t["id"])
     client.post("/admin/worker/tick")
     # corrupt the sentinel to report failure
     out = pathlib.Path(run["output_path"])
@@ -77,7 +117,7 @@ def test_watcher_timeout_blocks_ticket(client, board_id):
     from app.config import settings
 
     t = _to_in_progress(client, board_id)
-    run = client.post(f"/tickets/{t['id']}/runs", json={"use_navigator": True}).json()
+    run = _auto_run(client, t["id"])
     client.post("/admin/worker/tick")
     # remove the sentinel so the run never "completes"
     (pathlib.Path(run["output_path"]) / ".agent_done.json").unlink()
@@ -98,7 +138,7 @@ def test_watcher_detects_process_exit(client, board_id):
     from app.models import AgentRun
 
     t = _to_in_progress(client, board_id)
-    run = client.post(f"/tickets/{t['id']}/runs", json={"use_navigator": True}).json()
+    run = _auto_run(client, t["id"])
     client.post("/admin/worker/tick")
     (pathlib.Path(run["output_path"]) / ".agent_done.json").unlink()
     # simulate a real CLI process that exited without writing a sentinel
@@ -119,7 +159,7 @@ def test_queue_reorder_and_cancel(client, board_id):
     runs = []
     for i in range(2):
         t = _to_in_progress(client, board_id, title=f"task {i}")
-        runs.append(client.post(f"/tickets/{t['id']}/runs", json={"use_navigator": True}).json())
+        runs.append(_auto_run(client, t["id"]))
 
     q = client.get("/queue").json()
     assert [qi["state"] for qi in q] == ["queued", "queued"]
@@ -139,9 +179,16 @@ def test_queue_reorder_and_cancel(client, board_id):
 
 def test_run_cancel_endpoint(client, board_id):
     t = _to_in_progress(client, board_id)
-    run = client.post(f"/tickets/{t['id']}/runs", json={"use_navigator": True}).json()
+    run = _auto_run(client, t["id"])
     res = client.post(f"/runs/{run['id']}/cancel").json()
     assert res["status"] == "canceled"
+    td = client.get(f"/tickets/{t['id']}").json()
+    assert td["status"] == "Canceled"
+    assert td["canceled_at"] is not None
+    events = td["status_events"]
+    assert events[-1]["from_status"] == "In Progress"
+    assert events[-1]["to_status"] == "Canceled"
+    assert events[-1]["actor"] == "Kay"
     # cancelling again -> 409
     assert client.post(f"/runs/{run['id']}/cancel").status_code == 409
 

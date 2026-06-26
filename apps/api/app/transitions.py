@@ -11,6 +11,12 @@ CANCELED = "Canceled"
 
 TERMINAL = {COMPLETED, CANCELED}
 
+# Digest policy: what the system does when a ticket ENTERS a status block.
+#   none          -> nothing automatic (plain column)
+#   agent_execute -> auto-run Navigator + enqueue a run (drag = execute)
+DIGEST_NONE = "none"
+DIGEST_AGENT_EXECUTE = "agent_execute"
+
 # Allowed forward edges. "Any non-terminal -> Canceled" is added below.
 ALLOWED: dict[str, set[str]] = {
     # Triage/Ready -> In Progress is allowed because the plan aliases Ready=Triage:

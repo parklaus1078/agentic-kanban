@@ -1,0 +1,667 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Agent System v2 — 재설계 기획안 (rev.4)</title>
+<style>
+  :root{
+    --bg:#0b1020; --panel:#121a2f; --panel2:#16213d; --ink:#eaf0ff; --muted:#9fb0d1;
+    --line:#2b3a64; --accent:#78a6ff; --green:#5ee38f; --orange:#ff9c4a; --purple:#a77cff;
+    --red:#ff6b7a; --yellow:#ffd166; --cyan:#5eead4; --gray:#9ca3af;
+  }
+  *{box-sizing:border-box}
+  html{scroll-behavior:smooth}
+  body{
+    margin:0;
+    background:radial-gradient(circle at top left,#17254c 0,#0b1020 42%,#070b16 100%);
+    background-attachment:fixed;
+    color:var(--ink);
+    font-family:"Apple SD Gothic Neo","Malgun Gothic","Noto Sans KR",Inter,ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;
+    line-height:1.65;
+    -webkit-font-smoothing:antialiased;
+  }
+  /* ---------- Header ---------- */
+  header{
+    padding:60px 42px 40px;
+    border-bottom:1px solid var(--line);
+    background:linear-gradient(135deg,rgba(120,166,255,.18),rgba(167,124,255,.09));
+  }
+  .header-inner{max-width:1180px;margin:0 auto}
+  .eyebrow{color:var(--cyan);font-weight:700;letter-spacing:.14em;text-transform:uppercase;font-size:13px}
+  .title{font-size:42px;line-height:1.16;margin:12px 0 14px;font-weight:800;letter-spacing:-.5px}
+  .title .rev{color:var(--accent)}
+  .subtitle{max-width:940px;color:var(--muted);font-size:18px;margin:0}
+  .meta{display:flex;gap:10px;flex-wrap:wrap;margin-top:24px}
+  .pill{border:1px solid var(--line);background:rgba(255,255,255,.045);padding:8px 13px;border-radius:999px;color:#cdd8f5;font-size:13px}
+  .pill b{color:#fff;font-weight:700}
+  /* ---------- Layout ---------- */
+  .layout{max-width:1240px;margin:0 auto;padding:0 24px;display:grid;grid-template-columns:262px minmax(0,1fr);gap:34px;align-items:start}
+  main{padding:34px 0 90px;min-width:0}
+  /* ---------- TOC ---------- */
+  nav.toc{position:sticky;top:0;align-self:start;max-height:100vh;overflow-y:auto;padding:30px 0 30px}
+  nav.toc .toc-card{background:linear-gradient(180deg,rgba(255,255,255,.05),rgba(255,255,255,.02));border:1px solid var(--line);border-radius:16px;padding:18px 16px}
+  nav.toc h2{font-size:14px;text-transform:uppercase;letter-spacing:.1em;color:var(--cyan);margin:0 0 12px;border:0;padding:0}
+  nav.toc ol{list-style:none;margin:0;padding:0}
+  nav.toc li{margin:2px 0}
+  nav.toc a{display:block;color:#bcccef;text-decoration:none;font-size:13px;padding:5px 9px;border-radius:8px;border-left:2px solid transparent;line-height:1.35}
+  nav.toc a:hover{background:rgba(120,166,255,.12);color:#fff;border-left-color:var(--accent)}
+  /* ---------- Sections ---------- */
+  section{margin:0 0 26px;scroll-margin-top:18px}
+  .card{background:linear-gradient(180deg,rgba(255,255,255,.055),rgba(255,255,255,.022));border:1px solid var(--line);border-radius:18px;padding:26px 28px;box-shadow:0 18px 60px rgba(0,0,0,.22)}
+  h2{font-size:26px;margin:0 0 16px;border-left:4px solid var(--accent);padding-left:14px;line-height:1.25;font-weight:800}
+  h2 .num{color:var(--accent);font-weight:800;margin-right:8px}
+  h3{font-size:19px;margin:24px 0 10px;color:#f4f8ff;font-weight:700}
+  h3:first-child{margin-top:0}
+  h4{margin:18px 0 8px;color:#dfe7ff;font-size:16px}
+  p{margin:12px 0}
+  .muted{color:var(--muted)}
+  strong,b{color:#fff;font-weight:700}
+  a{color:var(--accent)}
+  ul,ol{padding-left:24px;margin:12px 0}
+  li{margin:7px 0}
+  hr{border:0;border-top:1px solid var(--line);margin:30px 0}
+  /* ---------- Code ---------- */
+  code,pre{font-family:"SFMono-Regular",Consolas,"Liberation Mono",ui-monospace,monospace}
+  code{background:rgba(120,166,255,.14);padding:.14em .42em;border-radius:6px;color:#dbe8ff;font-size:.9em}
+  pre{
+    white-space:pre;
+    background:#060d1b;
+    border:1px solid var(--line);
+    border-radius:14px;
+    padding:18px 20px;
+    overflow-x:auto;
+    color:#cfe0ff;
+    font-size:13px;
+    line-height:1.5;
+    margin:14px 0;
+  }
+  pre code{background:none;padding:0;color:inherit;font-size:inherit}
+  .pre-label{display:inline-block;font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);margin:4px 0 -6px;padding-left:2px}
+  /* ---------- Tables ---------- */
+  .table-wrap{overflow-x:auto;margin:14px 0;border:1px solid var(--line);border-radius:12px}
+  table{width:100%;border-collapse:collapse;min-width:520px}
+  th,td{border:1px solid var(--line);padding:11px 14px;text-align:left;vertical-align:top;font-size:14px}
+  th{background:rgba(120,166,255,.14);color:#f4f7ff;font-weight:700;white-space:nowrap}
+  td{background:rgba(255,255,255,.018)}
+  tbody tr:nth-child(even) td{background:rgba(255,255,255,.04)}
+  td code{white-space:nowrap}
+  .col-id{white-space:nowrap;font-weight:700;color:var(--cyan)}
+  /* ---------- Callouts ---------- */
+  .callout{border-left:4px solid var(--yellow);background:rgba(255,209,102,.08);padding:16px 18px;border-radius:12px;margin:16px 0}
+  .callout.good{border-color:var(--green);background:rgba(94,227,143,.09)}
+  .callout.danger{border-color:var(--red);background:rgba(255,107,122,.09)}
+  .callout.info{border-color:var(--accent);background:rgba(120,166,255,.10)}
+  .callout p{margin:8px 0}
+  .callout p:first-child{margin-top:0}
+  .callout p:last-child{margin-bottom:0}
+  /* hero callout */
+  .hero-callout{
+    border:1px solid rgba(120,166,255,.5);
+    background:linear-gradient(135deg,rgba(120,166,255,.16),rgba(167,124,255,.12));
+    border-radius:16px;padding:22px 24px;margin:0 0 26px;
+    box-shadow:0 14px 50px rgba(60,90,200,.18);
+  }
+  .hero-callout .lab{display:inline-flex;align-items:center;gap:8px;font-size:12px;font-weight:800;letter-spacing:.08em;text-transform:uppercase;color:#fff;background:linear-gradient(90deg,var(--accent),var(--purple));padding:5px 12px;border-radius:999px}
+  .change-list{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:16px}
+  .change-list .ci{display:flex;gap:12px;align-items:flex-start;background:rgba(255,255,255,.04);border:1px solid var(--line);border-radius:12px;padding:12px 14px}
+  .change-list .badge{flex:0 0 auto;width:26px;height:26px;border-radius:8px;display:grid;place-items:center;font-weight:800;font-size:13px;color:#08101f;background:linear-gradient(135deg,var(--cyan),var(--accent))}
+  @media(max-width:760px){.change-list{grid-template-columns:1fr}}
+  /* blockquote */
+  blockquote{margin:16px 0;border-left:4px solid var(--purple);background:rgba(167,124,255,.10);padding:14px 18px;border-radius:12px;color:#e7ecff}
+  blockquote p{margin:6px 0}
+  blockquote p:first-child{margin-top:0}
+  blockquote p:last-child{margin-bottom:0}
+  /* ---------- Checklist ---------- */
+  ul.checklist{list-style:none;padding-left:2px;margin:14px 0}
+  ul.checklist li{display:flex;gap:12px;align-items:flex-start;margin:11px 0}
+  .box{width:20px;height:20px;border:1.5px solid var(--accent);border-radius:6px;flex:0 0 auto;margin-top:2px;background:rgba(120,166,255,.08);position:relative}
+  ul.checklist li.learn .box{border-color:var(--purple);background:rgba(167,124,255,.10)}
+  /* ---------- Footer ---------- */
+  .footer{margin-top:50px;color:var(--muted);font-size:13px;text-align:center;border-top:1px solid var(--line);padding-top:24px}
+  /* ---------- Responsive ---------- */
+  @media(max-width:980px){
+    .layout{grid-template-columns:1fr;gap:0}
+    nav.toc{position:static;max-height:none;padding:24px 0 0}
+    nav.toc .toc-card{margin-bottom:8px}
+    .title{font-size:32px}
+    header{padding:40px 22px 30px}
+    .card{padding:20px 18px}
+  }
+</style>
+</head>
+<body>
+<header>
+  <div class="header-inner">
+    <div class="eyebrow">Agent System v2 · Re-architecture Design</div>
+    <h1 class="title">Agent System v2 — 재설계 기획안 <span class="rev">(rev.4)</span></h1>
+    <p class="subtitle">목표 아키텍처와 단계적 마이그레이션을 함께 담은 재설계안. Hermes를 제거하고 LangGraph·LangChain·RAG를 의도적으로 채택하며, 인터랙티브 tmux 세션·Watcher 관리·공식 문서 기반 권한(auto)/모델 SSOT·SSE 라이브 로그·rate-limit 자동 재개·정전/WSL drop 대비 데이터 내구성으로 Kanban 티켓을 재귀 세분화·실행·자기진화시킨다. (Kay 미해결 후속결정 6 + 내구성 요구 반영)</p>
+    <div class="meta">
+      <span class="pill">작성일 <b>2026-06-26 (KST)</b></span>
+      <span class="pill">개정 <b>rev.4</b></span>
+      <span class="pill">접근: <b>목표 아키텍처 + 단계적 마이그레이션</b></span>
+      <span class="pill">상태: <b>설계 개정 (구현 전, Kay 리뷰 대기)</b></span>
+      <span class="pill">스택: <b>React · FastAPI · Postgres+pgvector · LangGraph · LangChain · RAG</b></span>
+    </div>
+  </div>
+</header>
+
+<div class="layout">
+  <nav class="toc">
+    <div class="toc-card">
+      <h2>목차</h2>
+      <ol>
+        <li><a href="#sec-0">0 · 프로젝트의 두 목적</a></li>
+        <li><a href="#sec-1">1 · 재설계 동기</a></li>
+        <li><a href="#sec-2">2 · Decision Log (D1–D21)</a></li>
+        <li><a href="#sec-3">3 · 핵심 멘탈모델</a></li>
+        <li><a href="#sec-4">4 · 컴포넌트 아키텍처</a></li>
+        <li><a href="#sec-5">5 · 오케스트레이션 — LangGraph</a></li>
+        <li><a href="#sec-6">6 · 에이전트 역할 2종</a></li>
+        <li><a href="#sec-7">7 · 트리거 &amp; digest_policy</a></li>
+        <li><a href="#sec-8">8 · 티켓 세분화</a></li>
+        <li><a href="#sec-9">9 · End-to-End</a></li>
+        <li><a href="#sec-10">10 · 실제 실행 — tmux + Watcher</a></li>
+        <li><a href="#sec-11">11 · Agent 권한 / 오토모드</a></li>
+        <li><a href="#sec-12">12 · 모델 레지스트리 &amp; 선택 UX</a></li>
+        <li><a href="#sec-13">13 · 라이브 런 뷰 — SSE 확정</a></li>
+        <li><a href="#sec-14">14 · Rate-limit 자동 재개 메커니즘</a></li>
+        <li><a href="#sec-15">15 · 데이터 내구성 / Fail-safe</a></li>
+        <li><a href="#sec-16">16 · 장기 메모리 &amp; 자기진화</a></li>
+        <li><a href="#sec-17">17 · RAG 설계</a></li>
+        <li><a href="#sec-18">18 · 프로젝트 관리 (CRUD)</a></li>
+        <li><a href="#sec-19">19 · UI / UX &amp; 반응형</a></li>
+        <li><a href="#sec-20">20 · 데이터 모델</a></li>
+        <li><a href="#sec-21">21 · API (변경/추가)</a></li>
+        <li><a href="#sec-22">22 · 마이그레이션 로드맵 (8 Phase)</a></li>
+        <li><a href="#sec-23">23 · 성공 기준</a></li>
+        <li><a href="#sec-24">24 · 비목표</a></li>
+        <li><a href="#sec-25">25 · Open Questions</a></li>
+      </ol>
+    </div>
+  </nav>
+
+  <main>
+    <!-- Doc meta + hero callout -->
+    <section>
+      <div class="card">
+        <ul style="margin:0">
+          <li><b>작성일</b>: 2026-06-26 (KST) / 개정: <b>rev.4</b> (Kay 미해결 후속결정 6 + 내구성 요구 반영)</li>
+          <li><b>입력</b>: 기존 기획안 + 소스 다이어그램 + 현재 코드베이스 + <code>~/llm_wiki</code> 규약 + Kay 안건(4 + 14 + 7) + Claude/Codex 공식 문서·소스</li>
+          <li><b>상태</b>: <b>설계 개정 (구현 전, Kay 리뷰 대기)</b> · 접근: 목표 아키텍처 + 단계적 마이그레이션</li>
+        </ul>
+
+        <div class="hero-callout">
+          <span class="lab">rev.4 변화</span>
+          <div class="change-list">
+            <div class="ci"><span class="badge">①</span><div>라이브 로그 <b>SSE 확정</b>.</div></div>
+            <div class="ci"><span class="badge">②</span><div>기본 권한 <b><code>auto</code> 모드</b>.</div></div>
+            <div class="ci"><span class="badge">③</span><div><b>Rate-limit 자동 재개</b>: 공식 문구로 감지 → 로그 스냅샷 → <b>Claude Haiku가 리셋시각 파싱·cron 생성</b> → UI에 티켓#·재시작시각 표시 → 리셋 후 자동 resume(§14).</div></div>
+            <div class="ci"><span class="badge">④</span><div>모델 레지스트리 <b>수동 config + Single Source of Truth</b>.</div></div>
+            <div class="ci"><span class="badge">⑤</span><div>스킬 유사탐색 소스 = <b>설치 plugin + 마켓 레지스트리 + Web Search</b>.</div></div>
+            <div class="ci"><span class="badge">⑥</span><div>위키 maintainer <b>Claude 고정</b>.</div></div>
+            <div class="ci"><span class="badge">⑦</span><div><b>데이터 내구성/Fail-safe</b>: 정전·WSL 강제종료로 DB·컨테이너·tmux 전멸 대비 — /mnt/k 스냅샷 + 복구 루틴 + resumable run(§15).</div></div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ===================== 0 ===================== -->
+    <section id="sec-0">
+      <div class="card">
+        <h2><span class="num">0.</span>프로젝트의 두 목적</h2>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>목적</th><th>내용</th><th>영향</th></tr></thead>
+            <tbody>
+              <tr><td>주</td><td>Kay 작업 편의 실용 시스템</td><td>단일 사용자 로컬, Kay 승인 게이트</td></tr>
+              <tr><td>부</td><td><b>Web Dev → AX Engineer 커리어 전환</b> 포트폴리오</td><td><b>LangChain·RAG·LangGraph 의도적 채택</b></td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+    <!-- ===================== 1 ===================== -->
+    <section id="sec-1">
+      <div class="card">
+        <h2><span class="num">1.</span>재설계 동기</h2>
+        <p>E2E 검수 중 In Progress 드래그 멈춤 → 근본원인: 자동화가 상태가 아니라 <b>큐</b>로 구동(전이는 상태만 바꾸고 run 미생성). rev.2~4로 트리거·오케스트레이션·실행·메모리·내구성을 재설계.</p>
+      </div>
+    </section>
+
+    <!-- ===================== 2 ===================== -->
+    <section id="sec-2">
+      <div class="card">
+        <h2><span class="num">2.</span>Decision Log</h2>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>#</th><th>결정</th><th>선택</th><th>근거</th></tr></thead>
+            <tbody>
+              <tr><td class="col-id">D1</td><td>목적</td><td>전면 재설계 + 커리어 학습가치</td><td>§0</td></tr>
+              <tr><td class="col-id">D2</td><td>오케스트레이션</td><td><b>Hermes 제거. LangGraph 런타임 + LangChain 추상화</b></td><td>안건1·2·8</td></tr>
+              <tr><td class="col-id">D3</td><td>실행 방식</td><td><b>인터랙티브 CLI 세션을 전용 tmux 새 윈도우</b>에서(print/exec 아님)</td><td>검수1</td></tr>
+              <tr><td class="col-id">D4</td><td>트리거</td><td>digestible 진입=자동 navigate+enqueue, 큐=동시성 버퍼</td><td>멈춤버그</td></tr>
+              <tr><td class="col-id">D5</td><td>에이전트 역할</td><td>2종: Navigator(라우팅) / Executor(수행)</td><td>안건3</td></tr>
+              <tr><td class="col-id">D6</td><td>세분화</td><td>부모→자식, 재귀, Navigator가 PM/CTO+계획 plugin 라우팅</td><td>안건3a</td></tr>
+              <tr><td class="col-id">D7</td><td>persona↔brain</td><td>창의=Codex, 기술=Claude</td><td>안건3b</td></tr>
+              <tr><td class="col-id">D8</td><td>Watcher</td><td>시작·진행·권한·완료 감시 → 완료 시 윈도우 kill·다음 작업</td><td>검수2</td></tr>
+              <tr><td class="col-id">D9</td><td><b>권한 기본</b></td><td><b><code>auto</code> permission mode</b> (Claude <code>auto</code>/Codex workspace-write·on-request). 에이전트별 scope UI. 공식 플래그로 사전인가</td><td>후속2·검수3</td></tr>
+              <tr><td class="col-id">D10</td><td><b>Failure 분류</b></td><td>일시(429/스로틀/통신)=재시도→폴백; <b>사용량한도=감지→Haiku cron 재개</b>(§14); hang=kill</td><td>검수4·후속3</td></tr>
+              <tr><td class="col-id">D11</td><td><b>모델 선택</b></td><td>공식 문서 기반 picker(기본=최신). <b>레지스트리는 수동 config + SSOT(한 곳 정의·참조)</b></td><td>검수5·후속4</td></tr>
+              <tr><td class="col-id">D12</td><td>프로젝트 관리</td><td>Project CRUD(slug/title/보드템플릿)</td><td>검수6</td></tr>
+              <tr><td class="col-id">D13</td><td>UI/UX</td><td>minimal + 1080p~4K 반응형</td><td>검수7</td></tr>
+              <tr><td class="col-id">D14</td><td>벡터스토어</td><td>pgvector (Chroma 백로그)</td><td>검수9</td></tr>
+              <tr><td class="col-id">D15</td><td>LangGraph checkpointer</td><td>Postgres</td><td>검수10</td></tr>
+              <tr><td class="col-id">D16</td><td>위키 maintainer</td><td><b>Claude 고정</b> (opus + 최대 effort)</td><td>검수11·후속6</td></tr>
+              <tr><td class="col-id">D17</td><td>스킬 자기진화</td><td>기존 유사 우선 제안→수락=설치/거부=생성. <b>유사탐색 = 설치 plugin + 마켓 레지스트리 + Web Search</b></td><td>검수12·후속5</td></tr>
+              <tr><td class="col-id">D18</td><td>부모 자동완료</td><td>기본 ON + UI 토글</td><td>검수14</td></tr>
+              <tr><td class="col-id">D19</td><td><b>라이브 로그</b></td><td><b>SSE 확정</b> (폴링 폴백)</td><td>후속1</td></tr>
+              <tr><td class="col-id">D20</td><td><b>데이터 내구성</b></td><td><b>/mnt/k 스냅샷 + 복구 루틴 + resumable run</b>(정전·WSL drop 대비)</td><td>검수7(추가)</td></tr>
+              <tr><td class="col-id">D21</td><td>Rate-limit 파싱</td><td><b>공식 감지문구는 SSOT 패턴 config, 리셋시각은 Haiku가 파싱</b>(문구 릴리스 변동 대비)</td><td>후속3</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+    <!-- ===================== 3 ===================== -->
+    <section id="sec-3">
+      <div class="card">
+        <h2><span class="num">3.</span>핵심 멘탈모델</h2>
+        <blockquote>
+          <p>Kanban 티켓 = 작업 단위(재귀 세분화). <b>LangGraph StateGraph</b>가 라이프사이클 런타임(LLM 아님) — 결정 노드→<b>Navigator</b>, 작업 노드→<b>Executor</b>. Executor는 <b>전용 tmux 새 윈도우의 인터랙티브 CLI</b>로 돌고 <b>Watcher</b>가 감시·관리. <b>LangChain</b>이 CLI/RAG/프롬프트 추상화, <b>RAG over LLM Wiki</b>가 장기기억 주입. 모든 전이는 raw 기록→ingest 합성→반복교훈 Skill화→자동 적용. <b>상태는 Postgres에 durable(라이프사이클 checkpointer 포함)</b>, 산출물·로그는 /mnt/k에 저장 → 정전/WSL drop에도 복구 가능.</p>
+        </blockquote>
+      </div>
+    </section>
+
+    <!-- ===================== 4 ===================== -->
+    <section id="sec-4">
+      <div class="card">
+        <h2><span class="num">4.</span>컴포넌트 아키텍처</h2>
+        <div class="pre-label">시스템 다이어그램</div>
+        <pre><code>                                HOST (WSL2 / Linux)
+ +--------------------------------------------------------------------------------+
+ |  Browser ── http/SSE ──> web (React/Vite, 반응형)                               |
+ |                              v                                                  |
+ |                           api (FastAPI) ───────────────┐ SSE run-log            |
+ |                              v                          v                        |
+ |                  ┌────────────────────────┐    Postgres + pgvector              |
+ |                  │ Orchestrator(LangGraph)│◄──►(상태·벡터·레지스트리·scheduled  |
+ |                  │ StateGraph + PG ckpt    │     jobs ; 라이프사이클 checkpoint) |
+ |                  └───┬───────────┬─────────┘         ^                           |
+ |        LangChain+RAG │           │ enqueue           │ embed wiki                |
+ |        ┌─────────────┴──┐    queue_items       ┌─────┴──────┐                   |
+ |        │ Navigator(LLM) │        │             │ RAG(pgvec) │                   |
+ |        └────────────────┘        v             └────────────┘                   |
+ |                          Host 실행 데몬: tmux 전용세션 새 윈도우 →               |
+ |                            인터랙티브 CLI(권한 사전인가) → pane→run.log          |
+ |                                    │                                             |
+ |               Watcher: 윈도우 감시(시작/진행/권한/완료/실패) → 완료 시 kill·다음 |
+ |                            │ rate-limit 감지 시 → Haiku 파서 → cron 재개(§14)    |
+ |  Scheduler ── cron ──> ingest(02:00)/audit(월말) + **snapshot(주기)**(§15)       |
+ |  Recovery(부팅): 스냅샷 복구 + run 재조정 + cron 재무장(§15)                      |
+ |  host mounts: /mnt/k/WRITTEN_BY_CODEX · /WRITTEN_BY_CLAUDE · /WSL_volume(스냅샷) · /home/kay/llm_wiki |
+ +--------------------------------------------------------------------------------+</code></pre>
+        <p>(컴포넌트 표는 rev.3과 동일 + Recovery/Snapshot 서비스, Rate-limit 재개기 추가 — §14·§15.)</p>
+      </div>
+    </section>
+
+    <!-- ===================== 5 ===================== -->
+    <section id="sec-5">
+      <div class="card">
+        <h2><span class="num">5.</span>오케스트레이션 — LangGraph StateGraph</h2>
+        <p>상태 = <code>{ticket, navigator_decision, run, review, retries, rate_limit_until, cli_session_id}</code>. <b>Postgres checkpointer</b>로 durable. 노드: intake→navigate(subdivide|execute)→subdivide/ dispatch→watch→review→complete→ingest-memory. 세분화·리뷰NO·실패는 조건부 엣지로 분기.</p>
+
+        <h3>5.1 Failure 분류 (검수4·후속3, 공식 문구 기반)</h3>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>분류</th><th>감지(공식 문구/신호)</th><th>전략</th></tr></thead>
+            <tbody>
+              <tr><td><b>일시 통신/용량</b></td><td>Claude <code>API Error: Request rejected (429)</code>, <code>Server is temporarily limiting requests (not your usage limit)</code>; Codex <code>Rate limit reached for …</code>(raw API, 상대시간); 스트림 끊김</td><td><b>지수 백오프 재시도 N회</b> → 실패 시 <b>fallback brain</b> → 그래도면 <b>Blocked + Kay 알림</b></td></tr>
+              <tr><td><b>사용량 한도(플랜)</b></td><td>Claude <code>You've hit your (session|weekly|Opus) limit · resets …</code>; Codex <code>You've hit your usage limit …</code>(또는 <code>codex exec --json</code>의 <code>UsageLimitExceeded</code>)</td><td><b>§14 Rate-limit 자동 재개 메커니즘</b></td></tr>
+              <tr><td><b>무한 hang</b></td><td>heartbeat/timeout 초과</td><td>윈도우 kill → 재시도/Blocked</td></tr>
+              <tr><td><b>권한 교착</b></td><td>Watcher가 pane에서 권한 프롬프트 패턴</td><td>사전인가(§11)로 대부분 차단; 뜨면 정책 자동응답 or Kay 에스컬레이션</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <blockquote>
+          <p>감지 문구는 릴리스마다 바뀔 수 있으므로 <b>SSOT 패턴 config(<code>ratelimit_patterns</code>)</b> 로 관리하고, 정확한 리셋 시각은 §14의 Haiku 파서가 담당(문자열 매칭에 과의존 금지).</p>
+        </blockquote>
+      </div>
+    </section>
+
+    <!-- ===================== 6 ===================== -->
+    <section id="sec-6">
+      <div class="card">
+        <h2><span class="num">6.</span>에이전트 역할 2종</h2>
+        <ul>
+          <li><b>(a) Navigator</b>: persona + skill/plugin set + agent(brain) + <b>모델</b> 선택, 세분화 라우팅 포함(프로젝트 티켓→PM/CTO+계획 plugin like <code>superpowers</code>/<code>gstacks</code>). LangChain chain(RAG 주입→CLI LLM→구조화 파서→<code>navigator_decisions</code>).</li>
+          <li><b>(b) Executor</b>: 전용 tmux 새 윈도우 인터랙티브 CLI로 산출물 생성.</li>
+        </ul>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>brain</th><th>성격</th><th>persona</th></tr></thead>
+            <tbody>
+              <tr><td>Codex</td><td>창의</td><td>PM, Marketer, Accountant, Strategist, CS Manager, Researcher, QA(E2E)</td></tr>
+              <tr><td>Claude</td><td>기술</td><td>CTO, Full Stack Developer, DevOps, Android/iOS, AI Engineer, MLOps, Data Engineer, QA(Unit), SecOps</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+    <!-- ===================== 7 ===================== -->
+    <section id="sec-7">
+      <div class="card">
+        <h2><span class="num">7.</span>트리거 &amp; digest_policy</h2>
+        <p><code>status_blocks.digest_policy</code>: <code>none|agent_execute</code>. <code>agent_execute</code>(In Progress) 진입 → <code>navigate(execute)→dispatch</code>. 세분화는 명시 트리거(재귀). 큐=per-brain 동시성 버퍼.</p>
+      </div>
+    </section>
+
+    <!-- ===================== 8 ===================== -->
+    <section id="sec-8">
+      <div class="card">
+        <h2><span class="num">8.</span>티켓 세분화</h2>
+        <p><code>tickets.parent_ticket_id</code>(재귀). Kay 트리거→Navigator(PM/CTO+계획 plugin)→Executor 자식 제안→Kay 승인→Todo 생성. <b>부모 자동완료 기본 ON + UI 토글</b>(<code>auto_complete_parent</code>).</p>
+      </div>
+    </section>
+
+    <!-- ===================== 9 ===================== -->
+    <section id="sec-9">
+      <div class="card">
+        <h2><span class="num">9.</span>End-to-End</h2>
+        <div class="pre-label">엔드투엔드 흐름</div>
+        <pre><code>프로젝트 생성→보드템플릿→Triage 티켓 → (세분화 트리거→Navigator→Executor 제안→승인→자식, 재귀)
+→ leaf를 In Progress 드래그 → navigate(execute): RAG 주입·persona/skill/agent/모델 결정 → dispatch
+→ Host 데몬: tmux 새 윈도우 인터랙티브 CLI(권한 사전인가) → pane 라이브(SSE)
+→ Watcher: 시작/진행/권한/완료 감시 (실패=§5.1, 사용량한도=§14) → 완료 시 윈도우 kill → Reviewing → 다음
+→ Kay 리뷰: YES=Completed / NO=코멘트 접어 재실행
+→ 모든 전이 raw 기록 → ingest(Claude opus) wiki 합성·outcome·스킬후보(§16)
+→ 자식 전부 완료 → 부모 자동완료(토글)</code></pre>
+      </div>
+    </section>
+
+    <!-- ===================== 10 ===================== -->
+    <section id="sec-10">
+      <div class="card">
+        <h2><span class="num">10.</span>실제 실행 — 인터랙티브 tmux + Watcher (검수1·2)</h2>
+        <ul>
+          <li><b>Dispatch</b>: 데몬이 <code>agent_runs(queued)</code> 폴링 → <code>tmux new-window -t asv2 -n run-&lt;id&gt;</code> → 인터랙티브 CLI를 권한 사전인가(§11)·모델(§12)로 시작:
+            <ul>
+              <li>Claude: <code>claude --model &lt;id&gt; --permission-mode auto</code> (+ <code>settings.json</code> allow/deny)</li>
+              <li>Codex: <code>codex --model &lt;id&gt; --sandbox workspace-write --ask-for-approval on-request</code> (또는 <code>--profile</code>)</li>
+              <li>prompt.md를 입력으로, <code>tmux pipe-pane</code>으로 <code>runs/&lt;id&gt;/run.log</code>(/mnt/k) 적재.</li>
+            </ul>
+          </li>
+          <li><b>Watcher 상태머신</b>(<code>tmux capture-pane</code> 폴링): 시작성공→<code>running</code> / 진행→유지 / 권한 프롬프트→§11 / <b>완료(sentinel+idle)→윈도우 kill→Reviewing→다음</b> / 에러·끊김·timeout→§5.1 / 사용량한도 문구→§14. 데몬은 finished 마크 안 함(완료 판정=Watcher).</li>
+          <li><code>ASV2_AGENT_MODE=simulated</code>: 윈도우 없이 결정적 산출물(동일 계약).</li>
+        </ul>
+      </div>
+    </section>
+
+    <!-- ===================== 11 ===================== -->
+    <section id="sec-11">
+      <div class="card">
+        <h2><span class="num">11.</span>Agent 권한 / 오토모드 — 공식 문서 기반 (검수3·후속2)</h2>
+        <blockquote>
+          <p>Shift+Tab 수작업 대신 <b>세션 시작 시 공식 플래그/설정으로 사전 인가</b>. <b>기본 = <code>auto</code></b>.</p>
+        </blockquote>
+        <ul>
+          <li><b>Claude Code</b>: <code>--permission-mode</code> 값 <code>default|acceptEdits|plan|auto|dontAsk|bypassPermissions</code>. <b>기본 <code>auto</code></b>(거의 전부 자동 + 백그라운드 안전성 검사). 단 <code>defaultMode:"auto"</code>는 프로젝트/로컬 settings에서 무시(v2.1.142+) → <b>user-level <code>~/.claude/settings.json</code></b>에 설정; 계정 요건 미충족 시 <code>acceptEdits</code>로 폴백. scope 규칙 <code>permissions.allow/deny/ask</code>(deny&gt;ask&gt;allow), 문법 <code>Bash(npm run test:*)</code>/<code>Read(.env)</code>/<code>Edit(/src/**)</code>.</li>
+          <li><b>Codex</b>: <code>approval_policy</code>(<code>untrusted|on-request|never</code>) × <code>sandbox_mode</code>(<code>read-only|workspace-write|danger-full-access</code>). "auto" 등가 = <code>--sandbox workspace-write --ask-for-approval on-request</code>. config.toml/프로필 파일(<code>$CODEX_HOME/&lt;name&gt;.config.toml</code>).</li>
+          <li><b>UI</b>: 보드/프로젝트/에이전트 단위 권한 프리셋·규칙 편집 → API가 <code>settings.json</code>/<code>config.toml</code>로 기록 → 데몬이 그 설정으로 세션 시작. 런타임 예외 프롬프트는 Watcher가 <code>tmux send-keys</code> 폴백.</li>
+          <li>출처: code.claude.com/docs/en/{permission-modes,permissions,settings,cli-reference}; developers.openai.com/codex/{agent-approvals-security,config-reference,config-advanced}</li>
+        </ul>
+      </div>
+    </section>
+
+    <!-- ===================== 12 ===================== -->
+    <section id="sec-12">
+      <div class="card">
+        <h2><span class="num">12.</span>모델 레지스트리 &amp; 선택 UX — 공식 문서 기반 (검수5·후속4)</h2>
+        <blockquote>
+          <p>정확한 모델명 암기 불필요. 모든 선택 지점(기능/persona/티켓/run)에 picker, <b>기본=최신</b>. <b>MVP는 수동 config이되 Single Source of Truth</b>(한 모듈/테이블에 정의하고 어디서나 참조 — 유지보수 용이).</p>
+        </blockquote>
+        <p><b>Claude (Claude Code)</b>: <code>opus</code>=<code>claude-opus-4-8</code>(기본·최신, <code>[1m]</code> 가능) / <code>sonnet</code>=<code>claude-sonnet-4-6</code> / <code>haiku</code>=<code>claude-haiku-4-5</code> / <code>fable</code>=<code>claude-fable-5</code>. 설정 <code>--model</code>·<code>/model</code>·settings <code>model</code>.</p>
+        <p><b>Codex (Codex CLI)</b>: <code>gpt-5.5</code>(기본·최신) / <code>gpt-5.4</code> / <code>gpt-5.4-mini</code> / <code>gpt-5.3-codex-spark</code>(Pro). effort <code>model_reasoning_effort=minimal|low|medium|high|xhigh</code>. (<code>gpt-5.x-codex</code>·<code>gpt-5.2</code>/<code>gpt-5.3-codex</code> deprecated.)</p>
+        <ul>
+          <li>구현: SSOT 정의(<code>config/models.*</code> 또는 <code>model_registry</code> 테이블, 필드 brain·id·display·is_latest·is_default·effort·source_url)를 한 곳에 두고 BE/FE가 참조. Navigator 결정에도 모델 필드(override 가능). 갱신은 수동(문서 변경 시 한 곳만 수정).</li>
+          <li>출처: code.claude.com/docs/en/model-config; developers.openai.com/codex/models</li>
+        </ul>
+      </div>
+    </section>
+
+    <!-- ===================== 13 ===================== -->
+    <section id="sec-13">
+      <div class="card">
+        <h2><span class="num">13.</span>라이브 런 뷰 — SSE 확정 (후속1)</h2>
+        <ul>
+          <li>데몬 pane → <code>runs/&lt;id&gt;/run.log</code>. <b>전송 = SSE</b>(<code>GET /runs/{id}/stream</code>, <code>text/event-stream</code> 서버 푸시; 거의 즉시, 변화 시에만 전송). 연결 불가/끊김 시 <b>폴링 폴백</b>(<code>GET /runs/{id}/log?offset=</code>).</li>
+          <li>UI: In-Progress 카드 펼치면 stdout 실시간 tail + <code>cancel</code>/<code>open full log</code>.</li>
+        </ul>
+      </div>
+    </section>
+
+    <!-- ===================== 14 ===================== -->
+    <section id="sec-14">
+      <div class="card">
+        <h2><span class="num">14.</span>Rate-limit 자동 재개 메커니즘 (검수4·후속3, 공식 소스 기반)</h2>
+        <blockquote>
+          <p>사용량 한도에 걸린 작업을 사람이 안 건드려도 리셋 후 알아서 재시작.</p>
+        </blockquote>
+        <p><b>흐름</b>:</p>
+        <ol>
+          <li><b>감지(Watcher)</b> — pane 텍스트를 <b>SSOT 패턴(<code>ratelimit_patterns</code>)</b> 과 매칭:
+            <ul>
+              <li>Claude: <code>You've hit your (session|weekly|Opus) limit · resets …</code> (출처: code.claude.com/docs/en/errors.md)</li>
+              <li>Codex: <code>You've hit your usage limit …</code> / 머신리더블 <code>codex exec --json</code>의 <code>UsageLimitExceeded</code> (출처: github.com/openai/codex <code>protocol/src/error.rs</code>)</li>
+              <li>(일시 429/스로틀은 §5.1으로 분기 — 한도 아님.)</li>
+            </ul>
+          </li>
+          <li><b>스냅샷</b> — 해당 로그 블록을 캡처(<code>runs/&lt;id&gt;/ratelimit-&lt;n&gt;.log</code>).</li>
+          <li><b>Haiku 파싱·스케줄</b> — <b>Claude Haiku 최신(<code>claude-haiku-4-5</code>)</b> 헤드리스로 스냅샷에서 리셋시각 추출:
+            <div class="pre-label">claude headless · json-schema</div>
+            <pre><code>claude -p "&lt;snapshot&gt;" --model haiku --output-format json --json-schema
+  '{"type":"object","properties":{"reset_time":{"type":"string","format":"date-time"},
+    "limit_type":{"type":"string"}},"required":["reset_time","limit_type"]}'</code></pre>
+            → <code>reset_time</code>(ISO8601)·<code>limit_type</code> 획득. (Codex는 가능하면 <code>resets_at</code> epoch 직접 사용이 더 정확.) 그 시각에 재개하는 <b>cron job 생성</b>(durable: <code>scheduled_jobs</code> 테이블에 기록 후 OS cron 등록 — §15와 연계).
+          </li>
+          <li><b>UI 알림</b> — run을 <code>rate_limited</code>·<code>rate_limit_until=reset_time</code>로 표시하고, <b>티켓#·재시작 예정시각</b>을 카드 코멘트/알람으로 노출.</li>
+          <li><b>리셋 후 자동 resume</b> — cron 발화 → LangGraph 재개: 가능하면 CLI 세션 resume(Claude <code>--resume &lt;cli_session_id&gt;</code>/<code>--continue</code>, Codex <code>codex exec resume --last</code>), 세션 유실 시 durable 컨텍스트로 <b>신규 re-dispatch</b>. 큐는 그동안 다른 brain 작업 계속.</li>
+        </ol>
+      </div>
+    </section>
+
+    <!-- ===================== 15 ===================== -->
+    <section id="sec-15">
+      <div class="card">
+        <h2><span class="num">15.</span>데이터 내구성 / Fail-safe (검수 추가7)</h2>
+        <div class="callout danger">
+          <p><b>위협</b>: 이 기기는 정전·WSL 인스턴스 강제 drop 등으로 <b>DB·Docker 컨테이너·tmux 세션이 통째로 삭제</b>되는 일이 잦음.</p>
+        </div>
+        <p><b>원칙</b>: ① 상태의 단일 진실원천(Postgres)을 주기적으로 <b>WSL 밖(/mnt/k)</b> 으로 스냅샷, ② 산출물·로그는 처음부터 /mnt/k에 저장, ③ run은 <b>재개 가능(idempotent)</b> 하게 설계, ④ 부팅 시 <b>복구 루틴</b>.</p>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>대상</th><th>전략</th></tr></thead>
+            <tbody>
+              <tr><td><b>Postgres(상태·checkpointer·레지스트리)</b></td><td>라이브 PGDATA는 리눅스-네이티브 볼륨(성능·fsync). <b>주기적 <code>pg_dump</code> 스냅샷을 <code>/mnt/k/WSL_volume/asv2/snapshots/</code></b> 로(예: 5–15분 + Completed/리뷰 등 핵심 전이 직후). 부팅 시 DB 비어있으면 <b>최신 스냅샷 자동 복구</b>. (선택: WAL 아카이빙으로 RPO 단축.) → drvfs(/mnt/k) 위에서 PGDATA 직접 구동은 fsync/락 문제로 <b>비권장</b>, 스냅샷 방식 채택</td></tr>
+              <tr><td><b>산출물·run 로그</b></td><td>이미 <code>/mnt/k/WRITTEN_BY_*</code>·<code>runs/&lt;id&gt;/</code> (Windows측) → WSL drop에도 생존. SSOT 유지</td></tr>
+              <tr><td><b>tmux 세션(휘발·복구 불가)</b></td><td>죽으면 끝 → <b>resumable run 설계</b>. 부팅/복구 시 <code>agent_runs(dispatched/running)</code> 중 <b>tmux 윈도우 부재면 <code>interrupted</code> 처리 후 재-enqueue</b>. CLI 세션 resume 가능하면(<code>--resume</code>/<code>codex exec resume</code>) 이어가고, 아니면 durable 컨텍스트로 신규 re-dispatch</td></tr>
+              <tr><td><b>Docker 컨테이너</b></td><td>compose로 재생성(상태 없음). 상태는 위 Postgres/파일에만</td></tr>
+              <tr><td><b>cron job(rate-limit 재개 등)</b></td><td>OS crontab은 wipe될 수 있으므로 <b><code>scheduled_jobs</code> 테이블에 스케줄을 durable 저장</b> → 복구 시 <b>cron 재무장</b>(re-arm)</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <p><b>복구 서비스(부팅 루틴)</b>: (a) DB 스냅샷 복구(필요 시) → (b) run 재조정(tmux 현실과 대조, interrupted 재투입) → (c) <code>scheduled_jobs</code>로 cron 재무장 → (d) <code>rate_limit_until</code> 지난 run 즉시 재개. LangGraph checkpointer(Postgres)로 워크플로우는 마지막 체크포인트부터 이어짐.</p>
+        <p><b>스냅샷 config(SSOT)</b>: 간격·보존수·대상경로(<code>/mnt/k/WSL_volume/asv2/snapshots/</code>) 한 곳 정의.</p>
+      </div>
+    </section>
+
+    <!-- ===================== 16 ===================== -->
+    <section id="sec-16">
+      <div class="card">
+        <h2><span class="num">16.</span>장기 메모리 &amp; 자기진화 — LLM Wiki 루프 (안건4·검수11·12)</h2>
+        <p><code>~/llm_wiki</code> = Karpathy 패턴(raw/wiki/schema, Ingest/Query/Lint), Decision <code>outcome:good|mixed|bad</code>+Review. agent-system-v2는 이미 raw 이벤트 기록 중.</p>
+        <ul>
+          <li><b>Ingest(02:00 KST)</b>: 위키 maintainer = <b>Claude 고정(opus + 최대 effort)</b> 가 규약대로 raw→wiki 합성.</li>
+          <li><b>Query(RAG)</b>: Navigator가 wiki만 검색(§17).</li>
+          <li><b>Lint(월말 04:00)</b>: 모순·orphan·broken·stale·ingest gap.</li>
+        </ul>
+
+        <h3>16.1 자기진화 스킬 — 기존 우선 → 설치/생성 (검수12·후속5)</h3>
+        <div class="pre-label">자기진화 루프</div>
+        <pre><code>실행→리뷰(만족/실수/개선요청)→raw→ingest(outcome·반복패턴 concept화)
+→ 임계치 넘은 교훈에 대해, 먼저 기존 유사 스킬/플러그인 탐색:
+   소스 = ① 설치된 plugin 목록 ② 마켓/플러그인 레지스트리 ③ Web Search
+→ 유사한 게 있으면 "이름 + 기능 설명" 포함 제안(UI/코멘트)
+     · Kay 수락 → CLI로 설치   · Kay 거부 → 새 스킬 생성(superpowers 호환)
+→ 없으면 바로 신규 생성 제안 → 활성화는 Kay 승인 게이트
+→ 다음 유사 티켓에서 Navigator가 RAG로 자동 선택·주입</code></pre>
+        <p>기억 대상: ① 하면 안 될 실수 ② 진행 중 개선요청 ③ 만족한 방식.</p>
+      </div>
+    </section>
+
+    <!-- ===================== 17 ===================== -->
+    <section id="sec-17">
+      <div class="card">
+        <h2><span class="num">17.</span>RAG 설계 (검수9)</h2>
+        <p><b>pgvector</b>(기존 Postgres). 임베딩 = <b>wiki 합성 페이지</b>(규약상 raw 직접 검색 금지). 체인: <code>retriever(pgvector)→(rerank)→context packet→CLI LLM</code>. 주입 2곳: Navigator 결정 / Executor 프롬프트. ingest 직후 재임베딩.</p>
+      </div>
+    </section>
+
+    <!-- ===================== 18 ===================== -->
+    <section id="sec-18">
+      <div class="card">
+        <h2><span class="num">18.</span>프로젝트 관리 (CRUD) (검수6)</h2>
+        <p><code>Project</code>(보드 위 계층): 신규 생성, slug/title 자유, 보드 템플릿 선택. Project=1+Board, 티켓번호 prefix. CRUD: 생성/조회/수정/아카이브.</p>
+      </div>
+    </section>
+
+    <!-- ===================== 19 ===================== -->
+    <section id="sec-19">
+      <div class="card">
+        <h2><span class="num">19.</span>UI / UX &amp; 반응형 (검수7)</h2>
+        <p>Minimal + 정보밀도. <b>1920×1080~3840×2160</b> 유동 그리드(해상도에 따라 1~3 패널 동시: 보드/드로어/큐/라이브로그), rem 스케일·고DPI. 드래그=실행 모델 시각화(디스패치 배지, ●live, 권한/모델 인라인).</p>
+      </div>
+    </section>
+
+    <!-- ===================== 20 ===================== -->
+    <section id="sec-20">
+      <div class="card">
+        <h2><span class="num">20.</span>데이터 모델 (기존 진화)</h2>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>테이블</th><th>변경</th></tr></thead>
+            <tbody>
+              <tr><td><code>projects</code>(신규)</td><td>id, slug, title, description, board_template_id, status, created_at</td></tr>
+              <tr><td><code>boards</code></td><td><code>project_id</code></td></tr>
+              <tr><td><code>tickets</code></td><td><code>parent_ticket_id</code>, <code>auto_complete_parent</code>(기본 true)</td></tr>
+              <tr><td><code>status_blocks</code></td><td><code>digest_policy</code>(none/agent_execute)</td></tr>
+              <tr><td><code>agent_runs</code></td><td><code>log_path</code>, 상태 <code>queued→dispatched→running→rate_limited→interrupted→success/failed/canceled</code>, <code>fallback_used</code>, <code>rate_limit_until</code>, <code>tmux_window</code>, <code>cli_session_id</code></td></tr>
+              <tr><td><code>navigator_decisions</code></td><td><code>task_kind</code>, <code>model_id</code>, <code>rag_context_refs</code>, <code>fallback_used</code></td></tr>
+              <tr><td><code>subdivision_proposals</code>(신규)</td><td>parent_ticket_id, proposed_children_json, status, created_by</td></tr>
+              <tr><td><code>agent_permission_profiles</code>(신규)</td><td>scope, brain, mode, allow_json, deny_json, settings_path</td></tr>
+              <tr><td><code>model_registry</code>(신규, SSOT)</td><td>brain, model_id, display_name, is_latest, is_default, effort_options_json, source_url</td></tr>
+              <tr><td><code>scheduled_jobs</code>(신규)</td><td>kind(ratelimit_resume/snapshot/ingest…), run_id, fire_at, payload_json, status (cron 재무장용 durable)</td></tr>
+              <tr><td><code>wiki_embeddings</code>(신규, pgvector)</td><td>wiki_path, chunk, embedding, page_type, outcome, updated_at</td></tr>
+              <tr><td><code>generated_skills</code>(신규)</td><td>slug, source_concept_path, kind(install_existing/new), suggested_ref, body_md, status, risk_level, approved_by</td></tr>
+              <tr><td><code>queue_items, status_events, artifacts, wiki_sync_jobs, watcher_events, comments, personas, skills</code></td><td>유지</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+    <!-- ===================== 21 ===================== -->
+    <section id="sec-21">
+      <div class="card">
+        <h2><span class="num">21.</span>API (변경/추가)</h2>
+        <div class="pre-label">엔드포인트</div>
+        <pre><code>GET/POST /projects ; GET/PATCH /projects/{id} ; POST /projects/{id}/archive ; GET /board-templates
+POST /tickets/{id}/transition          # agent_execute 진입 시 navigate(execute) 자동
+POST /tickets/{id}/subdivide ; GET /tickets/{id}/subdivision ; POST /subdivisions/{id}/approve|reject
+POST /tickets/{id}/runs                 # 수동 재디스패치
+GET  /runs/{id}/stream (SSE) ; GET /runs/{id}/log?offset=   # 라이브 로그
+POST /runs/{id}/resume                  # rate-limit 후(자동도 있음)
+GET/PUT /agents/{brain}/permissions ; GET /permission-presets
+GET /models?brain=claude|codex          # SSOT, 기본=최신
+PATCH /status-blocks/{id}               # digest_policy
+GET /skills/generated ; POST /skills/generated/{id}/accept|reject
+GET /memory/search?q=
+GET /system/snapshots ; POST /system/snapshots          # 내구성 운영
+GET /scheduled-jobs                     # cron 재무장 가시화</code></pre>
+      </div>
+    </section>
+
+    <!-- ===================== 22 ===================== -->
+    <section id="sec-22">
+      <div class="card">
+        <h2><span class="num">22.</span>마이그레이션 로드맵</h2>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Phase</th><th>내용</th><th>효과/학습</th></tr></thead>
+            <tbody>
+              <tr><td><b>1 트리거 수정</b></td><td>digest_policy + 전이-트리거 enqueue (기존 worker/simulated)</td><td><b>멈춤 즉시 해결</b></td></tr>
+              <tr><td><b>2 프로젝트 CRUD + 반응형 UI 골격</b></td><td>projects/보드템플릿, 1080p~4K</td><td>검수6·7</td></tr>
+              <tr><td><b>3 내구성 기반</b></td><td>pg_dump 스냅샷→/mnt/k, 부팅 복구 루틴, <code>scheduled_jobs</code></td><td><b>검수7(추가) — 우선 안정화</b></td></tr>
+              <tr><td><b>4 LangGraph + 실패정책</b></td><td>StateGraph, PG checkpointer, §5.1 + §14 rate-limit 재개</td><td><b>LangGraph 실전</b>, 검수4</td></tr>
+              <tr><td><b>5 인터랙티브 tmux + Watcher + 권한/모델</b></td><td>새 윈도우 인터랙티브 CLI, 사전인가, 모델 SSOT/picker, Watcher, SSE 로그</td><td><b>검수1·2·3·5 핵심</b></td></tr>
+              <tr><td><b>6 세분화 + Navigator(LangChain)</b></td><td>재귀 세분화, Navigator chain, 부모 자동완료</td><td><b>LangChain 실전</b></td></tr>
+              <tr><td><b>7 RAG 메모리</b></td><td>pgvector, 임베딩, 주입</td><td><b>RAG 실전</b></td></tr>
+              <tr><td><b>8 자기진화 + 하드닝</b></td><td>outcome→스킬(기존우선/생성, plugin+마켓+websearch), 승인 게이트, audit</td><td>진화 완성</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <blockquote>
+          <p>Phase 3(내구성)을 앞으로 당김 — 이 기기 특성상 데이터 유실이 잦아 다른 기능보다 먼저 안정화 필요.</p>
+        </blockquote>
+      </div>
+    </section>
+
+    <!-- ===================== 23 ===================== -->
+    <section id="sec-23">
+      <div class="card">
+        <h2><span class="num">23.</span>성공 기준</h2>
+        <ul class="checklist">
+          <li><span class="box"></span><span>In Progress 드래그 → 자동 실행. 재귀 세분화·leaf 독립 실행.</span></li>
+          <li><span class="box"></span><span>Executor가 전용 tmux 새 윈도우 인터랙티브 CLI로 <b>권한 프롬프트 없이</b>(auto) 실행, Watcher가 완료 시 윈도우 kill→다음.</span></li>
+          <li><span class="box"></span><span>통신/일시 = 재시도·폴백; <b>사용량 한도 = Haiku가 리셋시각 파싱·cron 생성, UI에 티켓#·재시작시각, 리셋 후 자동 resume</b>.</span></li>
+          <li><span class="box"></span><span>모든 모델 선택에 picker(기본=최신), 정의는 SSOT 한 곳.</span></li>
+          <li><span class="box"></span><span>라이브 로그 <b>SSE</b>. 1080p~4K 반응형.</span></li>
+          <li><span class="box"></span><span><b>정전/WSL drop 후 부팅 시</b>: 스냅샷 복구 + 중단 run 재투입 + cron 재무장으로 작업이 이어짐.</span></li>
+          <li><span class="box"></span><span>전이 raw 기록 → ingest(Claude opus) 합성. 반복교훈 → 기존 유사(설치/마켓/websearch) 제안 또는 생성 → 승인 후 자동 적용.</span></li>
+          <li class="learn"><span class="box"></span><span>(학습) LangGraph·LangChain·RAG 실경로 작동.</span></li>
+        </ul>
+      </div>
+    </section>
+
+    <!-- ===================== 24 ===================== -->
+    <section id="sec-24">
+      <div class="card">
+        <h2><span class="num">24.</span>비목표</h2>
+        <p>사람 승인 없는 완전 자율(세분화·실행·스킬활성·위험권한 게이트 유지); 멀티테넌트 SaaS; K8s 오토스케일(장기); 외부 통합(Slack/Notion/Jira); 민감 배포/결제/삭제 자동.</p>
+      </div>
+    </section>
+
+    <!-- ===================== 25 ===================== -->
+    <section id="sec-25">
+      <div class="card">
+        <h2><span class="num">25.</span>Open Questions (대부분 해소, 잔여)</h2>
+        <ul>
+          <li><code>auto</code> 권한 모드의 계정 요건 미충족 시 폴백 정책 확정(<code>acceptEdits</code>?).</li>
+          <li>스냅샷 간격/보존수, WAL 아카이빙 채택 여부(RPO 목표).</li>
+          <li>rate-limit cron을 OS cron vs LangGraph 내부 타이머 중 무엇으로(둘 다 <code>scheduled_jobs</code> durable 전제).</li>
+          <li>CLI 세션 resume 신뢰성(인터랙티브 세션 id 확보 경로) vs 항상 신규 re-dispatch.</li>
+          <li>모델 레지스트리 수동 갱신 주기/담당.</li>
+        </ul>
+      </div>
+    </section>
+
+    <div class="footer">
+      Agent System v2 — 재설계 기획안 (rev.4) · 2026-06-26 (KST) · Kay 미해결 후속결정 6 + 내구성 요구 반영 · 단일 HTML 산출물
+    </div>
+  </main>
+</div>
+</body>
+</html>

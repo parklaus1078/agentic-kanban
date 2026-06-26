@@ -9,9 +9,10 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from .. import schemas
+from .. import schemas, transitions as T
 from ..db import get_db
 from ..models import AgentRun, QueueItem
+from ..services import lifecycle
 
 router = APIRouter(tags=["runs"])
 
@@ -27,6 +28,19 @@ def _cancel_run(run: AgentRun) -> None:
     run.status = "canceled"
     run.finished_at = datetime.utcnow()
     run.error = run.error or "canceled"
+
+
+def _cancel_ticket_for_run(db: Session, run: AgentRun) -> None:
+    """Keep the ticket lifecycle in sync when its active/queued run is canceled."""
+    ticket = run.ticket
+    if ticket.status not in T.TERMINAL:
+        lifecycle.transition_ticket(
+            db,
+            ticket,
+            T.CANCELED,
+            actor="Kay",
+            reason_md=f"Agent run #{run.run_number} was canceled.",
+        )
 
 
 @router.get("/runs/{run_id}", response_model=schemas.AgentRunDetailOut)
@@ -45,6 +59,7 @@ def cancel_run(run_id: int, db: Session = Depends(get_db)):
     if run.status in {"success", "failed", "canceled"}:
         raise HTTPException(409, f"Run already finished ({run.status})")
     _cancel_run(run)
+    _cancel_ticket_for_run(db, run)
     qi = db.scalars(select(QueueItem).where(QueueItem.run_id == run.id)).first()
     if qi:
         qi.cancel_requested = True
@@ -82,6 +97,7 @@ def cancel_queue_item(queue_item_id: int, db: Session = Depends(get_db)):
         run = db.get(AgentRun, qi.run_id)
         if run and run.status in {"queued", "running"}:
             _cancel_run(run)
+            _cancel_ticket_for_run(db, run)
     db.commit()
     db.refresh(qi)
     return qi
