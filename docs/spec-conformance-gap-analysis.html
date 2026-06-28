@@ -1,0 +1,317 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Agent System v2 — 기획안 대비 구현 갭 분석</title>
+<style>
+  :root{
+    --bg:#0f1117;--panel:#171a23;--panel2:#1e222e;--border:#2a2f3d;--fg:#e6e8ee;--muted:#9aa3b4;
+    --accent:#7aa2f7;--green:#9ece6a;--red:#f7768e;--orange:#e0af68;--purple:#bb9af7;--blue:#7dcfff;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;background:var(--bg);color:var(--fg);
+    font-family:ui-sans-serif,system-ui,"Segoe UI",Roboto,"Noto Sans KR",sans-serif;line-height:1.6}
+  .layout{display:grid;grid-template-columns:300px 1fr;min-height:100vh}
+  nav{position:sticky;top:0;align-self:start;height:100vh;overflow-y:auto;background:var(--panel);
+    border-right:1px solid var(--border);padding:20px 16px}
+  nav h1{font-size:15px;margin:0 0 2px;color:var(--accent)}
+  nav .sub{font-size:11px;color:var(--muted);margin-bottom:14px}
+  nav a{display:block;padding:5px 10px;border-radius:6px;color:var(--fg);text-decoration:none;
+    font-size:12.5px;margin-bottom:1px;border-left:2px solid transparent}
+  nav a:hover{background:var(--panel2);border-left-color:var(--accent)}
+  nav .group{font-size:10.5px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);margin:14px 0 5px 10px}
+  main{padding:30px 42px 120px;max-width:1120px}
+  header.page h1{font-size:25px;margin:0 0 6px}
+  header.page p{color:var(--muted);margin:3px 0;font-size:13.5px}
+  section{background:var(--panel);border:1px solid var(--border);border-radius:12px;padding:20px 24px;margin-bottom:24px;scroll-margin-top:16px}
+  section>h2{margin:0 0 12px;font-size:18px;color:var(--accent)}
+  table{border-collapse:collapse;width:100%;font-size:12.5px;margin-top:6px}
+  th,td{border:1px solid var(--border);padding:7px 9px;text-align:left;vertical-align:top}
+  th{background:var(--panel2);color:var(--blue);font-weight:600}
+  code{background:#0c0e14;padding:1px 6px;border-radius:4px;font-family:ui-monospace,monospace;font-size:11.5px;color:var(--purple)}
+  .sev{display:inline-block;font-size:10.5px;font-weight:700;padding:1px 8px;border-radius:20px;white-space:nowrap}
+  .crit{background:#3a1620;color:#f7768e}
+  .major{background:#3a2c16;color:#e0af68}
+  .minor{background:#16323a;color:#7dcfff}
+  .cosm{background:#23283a;color:#9aa3b4}
+  .ok{background:#16331f;color:#9ece6a}
+  .card{border:1px solid var(--border);border-radius:10px;padding:16px 18px;margin:14px 0;background:var(--panel2)}
+  .card h3{margin:0 0 4px;font-size:15.5px}
+  .card .meta{font-size:11px;color:var(--muted);font-family:ui-monospace,monospace;margin-bottom:10px}
+  .row{display:grid;grid-template-columns:92px 1fr;gap:8px;font-size:13px;margin:5px 0}
+  .row .k{color:var(--muted);font-weight:600}
+  .row .spec{color:var(--green)}
+  .row .impl{color:var(--orange)}
+  .row .gap{color:var(--red)}
+  .ev{font-family:ui-monospace,monospace;font-size:11px;color:var(--blue)}
+  .legend{display:flex;gap:14px;flex-wrap:wrap;font-size:12px;color:var(--muted);margin-top:10px}
+  .bar{height:9px;border-radius:5px;background:#2a2f3d;overflow:hidden;display:inline-block;width:120px;vertical-align:middle}
+  .bar>i{display:block;height:100%;border-radius:5px}
+  .pct{font-family:ui-monospace,monospace;font-size:11px;color:var(--muted);margin-left:6px}
+  footer{color:var(--muted);font-size:12px;margin-top:30px}
+  .tl{color:var(--green)} .pa{color:var(--orange)} .no{color:var(--red)}
+  ul.tight{margin:6px 0;padding-left:20px;font-size:13px} ul.tight li{margin:3px 0}
+</style>
+</head>
+<body>
+<div class="layout">
+<nav>
+  <h1>기획안 대비 갭 분석</h1>
+  <div class="sub">spec rev.4 + llm_wiki + 현재 소스 대조</div>
+  <div class="group">요약</div>
+  <a href="#summary">총평 &amp; 점수</a>
+  <a href="#phase">Phase별(§22) 적합도</a>
+  <a href="#conformant">잘 맞는 부분</a>
+  <div class="group">Critical 갭</div>
+  <a href="#g1">1. LangGraph가 실제 런타임 아님</a>
+  <a href="#g2">2. Navigator가 LLM/LangChain 아님</a>
+  <a href="#g3">3. Postgres checkpointer 미구현</a>
+  <div class="group">Major 갭</div>
+  <a href="#g4">4. Rate-limit 자동 resume 폐루프 미완</a>
+  <a href="#g5">5. Ingest가 Claude opus 합성 아님</a>
+  <a href="#g6">6. 실제 Executor가 기본 스택 밖</a>
+  <a href="#g7">7. SSE 라이브로그 클라이언트 미구현</a>
+  <div class="group">Minor 갭</div>
+  <a href="#g8">8. RAG: pgvector/실임베딩 아님</a>
+  <a href="#g9">9. 자기진화 일부 stub</a>
+  <a href="#g10">10. 권한: 파일기록·scope 없음</a>
+  <a href="#g11">11. 데이터모델 잔여 차이</a>
+  <div class="group">Cosmetic</div>
+  <a href="#g12">12~15. Hermes 잔존 외</a>
+</nav>
+
+<main>
+<header class="page">
+  <h1>Agent System v2 — 기획안 대비 구현 갭 분석</h1>
+  <p><b>기준 문서</b>: <code>docs/superpowers/specs/2026-06-26-agent-system-v2-rearchitecture-design.md</code> (rev.4, 유일한 source of truth) + <code>~/llm_wiki/.../agent-system-v2</code> 결정/개요</p>
+  <p><b>대조 대상</b>: 현재 소스 (branch <code>feat/reconstructed</code>, <code>apps/api</code> · <code>apps/web</code>) — 정적 분석 + 라이브 DB/컨테이너 확인</p>
+  <p><b>관점</b>: "당초 기획안에 <u>부합하지 않는</u> 부분"만 리스트업. 각 항목에 [기획 요구 → 현재 구현 → 갭 → 증거(파일:라인)] 표기.</p>
+  <div class="legend">
+    <span><span class="sev crit">CRITICAL</span> 비협상 핵심결정/포트폴리오 목표 위반</span>
+    <span><span class="sev major">MAJOR</span> 기능 축이 stub·미완</span>
+    <span><span class="sev minor">MINOR</span> 부분구현/품질</span>
+    <span><span class="sev cosm">COSMETIC</span> 정리/잔재</span>
+  </div>
+</header>
+
+<section id="summary">
+  <h2>총평 &amp; 점수</h2>
+  <p style="font-size:13.5px;color:var(--muted)">
+    골격(데이터 모델, 8 Phase의 테이블/엔드포인트/UI 스캐폴딩)은 기획안을 충실히 따라 <b>"넓게" 구현</b>되어 있습니다.
+    그러나 기획안의 <b>지능·자동화 핵심 3축</b> — ① LangGraph가 라이프사이클을 실제로 구동, ② Navigator가 LLM(LangChain)으로 판단,
+    ③ rate-limit/메모리 자기진화가 폐루프로 동작 — 이 <b>규칙/스텁/수동으로 대체</b>되어 있어, 부 목적(LangChain·RAG·LangGraph 실전 포트폴리오)이
+    실질적으로 충족되지 않습니다. 즉 <b>"형태는 맞고 두뇌가 비어 있는"</b> 상태.
+  </p>
+  <table>
+    <thead><tr><th>영역</th><th>기획 핵심(§/D)</th><th>상태</th><th>적합도</th></tr></thead>
+    <tbody>
+      <tr><td>트리거 (digest_policy=실행)</td><td>D4·§7</td><td class="tl">충족</td><td><span class="bar"><i style="width:95%;background:var(--green)"></i></span><span class="pct">95%</span></td></tr>
+      <tr><td>데이터 모델 / 마이그레이션</td><td>§20</td><td class="tl">대체로 충족</td><td><span class="bar"><i style="width:85%;background:var(--green)"></i></span><span class="pct">85%</span></td></tr>
+      <tr><td>내구성 (스냅샷/부팅복구)</td><td>D20·§15</td><td class="pa">부분</td><td><span class="bar"><i style="width:70%;background:var(--orange)"></i></span><span class="pct">70%</span></td></tr>
+      <tr><td>오케스트레이션 (LangGraph 런타임)</td><td>D2·D15·§3·§5</td><td class="no">표류</td><td><span class="bar"><i style="width:30%;background:var(--red)"></i></span><span class="pct">30%</span></td></tr>
+      <tr><td>Navigator (LangChain LLM)</td><td>D2·D5·§6·§17</td><td class="no">미구현(규칙 대체)</td><td><span class="bar"><i style="width:25%;background:var(--red)"></i></span><span class="pct">25%</span></td></tr>
+      <tr><td>실제 실행 (tmux 인터랙티브)</td><td>D3·§10</td><td class="pa">코드 있으나 기본스택 밖</td><td><span class="bar"><i style="width:50%;background:var(--orange)"></i></span><span class="pct">50%</span></td></tr>
+      <tr><td>Rate-limit 자동 재개</td><td>D10·D21·§14</td><td class="no">폐루프 미완(stub)</td><td><span class="bar"><i style="width:35%;background:var(--red)"></i></span><span class="pct">35%</span></td></tr>
+      <tr><td>장기메모리 ingest (Claude opus)</td><td>D16·§16</td><td class="no">합성 미구현</td><td><span class="bar"><i style="width:30%;background:var(--red)"></i></span><span class="pct">30%</span></td></tr>
+      <tr><td>RAG (pgvector/실임베딩)</td><td>D14·§17</td><td class="pa">해시 BoW 대체</td><td><span class="bar"><i style="width:45%;background:var(--orange)"></i></span><span class="pct">45%</span></td></tr>
+      <tr><td>자기진화 스킬</td><td>D17·§16.1</td><td class="pa">설치검색만 실제</td><td><span class="bar"><i style="width:45%;background:var(--orange)"></i></span><span class="pct">45%</span></td></tr>
+      <tr><td>권한 오토모드</td><td>D9·§11</td><td class="pa">플래그O·파일기록X</td><td><span class="bar"><i style="width:60%;background:var(--orange)"></i></span><span class="pct">60%</span></td></tr>
+      <tr><td>모델 SSOT/picker</td><td>D11·§12</td><td class="tl">충족</td><td><span class="bar"><i style="width:90%;background:var(--green)"></i></span><span class="pct">90%</span></td></tr>
+      <tr><td>라이브 로그 (SSE 우선)</td><td>D19·§13</td><td class="pa">백엔드O·클라 폴링만</td><td><span class="bar"><i style="width:55%;background:var(--orange)"></i></span><span class="pct">55%</span></td></tr>
+      <tr><td>프로젝트 CRUD / 반응형 UI</td><td>D12·D13·§18·§19</td><td class="tl">대체로 충족</td><td><span class="bar"><i style="width:80%;background:var(--green)"></i></span><span class="pct">80%</span></td></tr>
+    </tbody>
+  </table>
+</section>
+
+<section id="phase">
+  <h2>Phase별(§22 로드맵) 적합도</h2>
+  <table>
+    <thead><tr><th>Phase</th><th>기획 의도</th><th>구현 상태</th></tr></thead>
+    <tbody>
+      <tr><td>1 트리거 수정</td><td>digest_policy + 전이→enqueue</td><td class="tl">완료 — 멈춤버그 해소 확인</td></tr>
+      <tr><td>2 프로젝트 CRUD + 반응형</td><td>projects/보드템플릿, 1080p~4K</td><td class="tl">대체로 완료</td></tr>
+      <tr><td>3 내구성</td><td>pg_dump 스냅샷, 부팅복구, scheduled_jobs</td><td class="pa">스냅샷/복구 O · scheduled_jobs <b>발화기 없음</b></td></tr>
+      <tr><td>4 LangGraph + 실패정책</td><td>StateGraph(<b>PG ckpt</b>) + §5.1 + §14 resume</td><td class="no">StateGraph 존재하나 <b>비주류 경로·MemorySaver</b>, resume 미완</td></tr>
+      <tr><td>5 tmux + Watcher + 권한/모델</td><td>인터랙티브 CLI, 사전인가, 모델 SSOT, SSE</td><td class="pa">빌더/데몬 O · <b>기본스택은 simulated</b>, SSE 클라 X</td></tr>
+      <tr><td>6 세분화 + Navigator(LangChain)</td><td>재귀 세분화 + <b>LangChain chain</b></td><td class="pa">세분화 O · Navigator <b>규칙기반(LLM 아님)</b></td></tr>
+      <tr><td>7 RAG 메모리</td><td>pgvector 임베딩 주입</td><td class="pa">파이프라인 O · <b>해시 BoW·JSON(비 pgvector)</b></td></tr>
+      <tr><td>8 자기진화 + 하드닝</td><td>outcome→스킬(설치/마켓/web), 승인게이트</td><td class="pa">스캐폴딩 O · <b>마켓/web/실제설치 stub</b></td></tr>
+    </tbody>
+  </table>
+  <p style="font-size:12.5px;color:var(--muted)">→ Phase 1~3은 실질 동작, Phase 4~8은 <b>인터페이스·테이블은 있으나 핵심 로직이 결정론적 대체물/스텁</b>. 기획안이 "의도적 채택"으로 못박은 LangChain·RAG·LangGraph·LLM 판단이 실경로에서 빠져 있음.</p>
+</section>
+
+<section id="conformant">
+  <h2>잘 맞는 부분 (균형 차원)</h2>
+  <ul class="tight">
+    <li><b>트리거 모델</b>: <code>digest_policy=agent_execute</code> 진입 시 <code>_maybe_auto_dispatch</code>가 Navigator+run enqueue — "드래그=실행" 정확히 구현 (당초 멈춤버그 해결). <span class="ev">tickets.py:91</span></li>
+    <li><b>데이터 모델</b>: projects/parent_ticket_id/auto_complete_parent/digest_policy/subdivision_proposals/agent_permission_profiles/scheduled_jobs/wiki_embeddings/generated_skills 모두 존재. <span class="ev">models.py</span></li>
+    <li><b>모델 SSOT</b>: <code>model_registry.py</code> 한 곳 정의, 공식 ID(opus-4-8/sonnet-4-6/haiku-4-5/fable-5, gpt-5.5/5.4), 기본=최신. <span class="ev">model_registry.py</span></li>
+    <li><b>persona↔brain</b>: 창의=codex / 기술=claude 매핑 시드. <span class="ev">seed.py:30-48</span></li>
+    <li><b>내구성</b>: pg_dump→/mnt/k 스냅샷, prune, 부팅 시 <code>recover_interrupted_runs</code> 재큐. <span class="ev">durability.py</span></li>
+    <li><b>raw 이벤트 기록</b>: 전이마다 wiki raw md + WikiSyncJob. <span class="ev">lifecycle.py · wiki.py</span></li>
+    <li><b>실패 패턴 SSOT</b>: 공식 문구 기반 usage_limit/transient 분류. <span class="ev">failure.py</span></li>
+    <li><b>tmux/권한 빌더</b>: <code>cli_exec</code>·<code>permissions</code>가 공식 플래그를 정확히 조립(순수·테스트됨). <span class="ev">cli_exec.py · permissions.py</span></li>
+  </ul>
+</section>
+
+<!-- ===================== CRITICAL ===================== -->
+<section id="g1">
+  <h2><span class="sev crit">CRITICAL</span> &nbsp;1. LangGraph가 실제 라이프사이클 런타임이 아니다</h2>
+  <div class="card">
+    <div class="meta">D2 · §3 핵심 멘탈모델 · §5 · 목표프롬프트 "우회 금지"</div>
+    <div class="row"><span class="k spec">기획</span><span>"LangGraph StateGraph가 라이프사이클 런타임(LLM 아님)" — intake→navigate→dispatch→watch→review→complete→ingest의 단일 런타임. checkpointer로 durable.</span></div>
+    <div class="row"><span class="k impl">구현</span><span>실제 구동은 <b>폴링 컨테이너 2개</b>: <code>worker_loop</code>(3s)+<code>watcher_loop</code>(2s). LangGraph <code>orchestrator.run_ticket</code>은 <b>수동 엔드포인트 <code>POST /tickets/{id}/orchestrate</code></b>로만 호출 — 헤드라인 "드래그=실행" 경로는 LangGraph를 전혀 거치지 않음.</span></div>
+    <div class="row"><span class="k gap">갭</span><span>오케스트레이션의 단일 진실 런타임이 LangGraph가 아니라 두 폴링 루프. 그래프는 부차적 데모 경로. 그래프 노드도 review/complete/ingest-memory/subdivide 누락(navigate→dispatch→watch만).</span></div>
+    <div class="row"><span class="k">증거</span><span class="ev">infra/docker-compose.yml(worker/watcher 서비스) · orchestrator.run_ticket 호출처 = tickets.py:161 단 한 곳 · orchestrator.py 노드셋</span></div>
+  </div>
+</section>
+
+<section id="g2">
+  <h2><span class="sev crit">CRITICAL</span> &nbsp;2. Navigator가 LLM/LangChain이 아니라 키워드 규칙기반</h2>
+  <div class="card">
+    <div class="meta">D2 · D5 · §6 · §17 · 목표프롬프트 "LangChain·RAG 의도적 사용, 우회 금지"</div>
+    <div class="row"><span class="k spec">기획</span><span>"Navigator = LangChain chain(RAG 주입→<b>CLI LLM</b>→구조화 파서→navigator_decisions)". 부 목적(AX 포트폴리오)의 핵심.</span></div>
+    <div class="row"><span class="k impl">구현</span><span><code>navigator.recommend()</code>은 순수 파이썬 <b>키워드 카운트 스코어링</b>(<code>PERSONA_KEYWORDS</code>). LLM 호출·LangChain 체인 없음. <code>langchain-core</code>가 requirements에 있으나 <b>코드에서 한 번도 import 안 됨</b>.</span></div>
+    <div class="row"><span class="k gap">갭</span><span>아키텍처 다이어그램의 "Navigator(LLM)"이 실제로는 "Navigator(rules)". 의도적 LangChain 채택이 0. RAG도 결정에 키워드-해시로만 주입(아래 #8).</span></div>
+    <div class="row"><span class="k">증거</span><span class="ev">navigator.py 전체(키워드 dict + _score_personas) · grep "from langchain" → 0건</span></div>
+  </div>
+</section>
+
+<section id="g3">
+  <h2><span class="sev crit">CRITICAL</span> &nbsp;3. LangGraph checkpointer가 Postgres가 아닌 MemorySaver</h2>
+  <div class="card">
+    <div class="meta">D15 · §3 · §15(복구) · §5</div>
+    <div class="row"><span class="k spec">기획</span><span>"checkpointer = <b>Postgres</b>" → 정전/재시작에도 "워크플로우는 마지막 체크포인트부터 이어짐"(§15).</span></div>
+    <div class="row"><span class="k impl">구현</span><span><code>g.compile(checkpointer=MemorySaver())</code> — 인메모리. 프로세스 죽으면 그래프 상태 소멸. 주석도 "MVP/tests, Postgres가 production target"으로 인정.</span></div>
+    <div class="row"><span class="k gap">갭</span><span>그래프 레벨 durable 재개 불가 → §15의 "checkpointer로 이어짐" 보장 미충족. (run 레벨 재큐는 durability가 따로 처리하나, LangGraph 상태는 아님.)</span></div>
+    <div class="row"><span class="k">증거</span><span class="ev">orchestrator.py:24,148</span></div>
+  </div>
+</section>
+
+<!-- ===================== MAJOR ===================== -->
+<section id="g4">
+  <h2><span class="sev major">MAJOR</span> &nbsp;4. Rate-limit 자동 재개가 폐루프로 닫히지 않음</h2>
+  <div class="card">
+    <div class="meta">D10 · D21 · §14 · §23 성공기준</div>
+    <div class="row"><span class="k spec">기획</span><span>감지(SSOT 패턴)→스냅샷→<b>Haiku가 리셋시각 파싱</b>→<code>scheduled_jobs</code> cron→UI에 티켓#·재시작시각→<b>리셋 후 자동 resume</b>(CLI <code>--resume</code> 또는 신규 re-dispatch).</span></div>
+    <div class="row"><span class="k impl">구현</span><span>감지/분류 O, <code>schedule_rate_limit_resume</code>가 durable job 생성 O. 그러나 — (a) <b>Haiku 파싱 미구현</b>: <code>_handle_rate_limit</code>은 주석만, 실제로는 <b>+5h 고정</b>. (b) <code>scheduled_jobs(fire_at)</code>를 <b>발화시켜 resume하는 코드가 어디에도 없음</b>(scheduler_loop은 ingest/audit/snapshot만). (c) <code>POST /runs/{id}/resume</code> 엔드포인트(§21) <b>부재</b>. (d) 프론트에 <b>rate-limit 표시 0</b>(grep rate_limit → 0건).</span></div>
+    <div class="row"><span class="k gap">갭</span><span>"리셋 후 알아서 재시작"의 절반(감지·기록)만. 핵심 절반(정확한 시각 파싱·시각 도래 시 재개·가시화) 전부 미연결. 부팅 복구도 <code>dispatched/running</code>만 재큐, <code>rate_limited</code>는 손대지 않음.</span></div>
+    <div class="row"><span class="k">증거</span><span class="ev">host_daemon.py:93-99 · orchestrator.py:109 · scheduler_loop.py(resume 없음) · routers grep resume → 0 · web grep rate_limit → 0</span></div>
+  </div>
+</section>
+
+<section id="g5">
+  <h2><span class="sev major">MAJOR</span> &nbsp;5. 위키 Ingest가 Claude opus 합성이 아니라 단순 표시</h2>
+  <div class="card">
+    <div class="meta">D16 · §16 · §9 E2E "ingest(Claude opus) 합성"</div>
+    <div class="row"><span class="k spec">기획</span><span>"Ingest(02:00): maintainer = <b>Claude 고정(opus + 최대 effort)</b>가 규약대로 raw→wiki <b>합성</b>" → outcome·스킬후보 추출 → RAG 재임베딩.</span></div>
+    <div class="row"><span class="k impl">구현</span><span><code>scheduler_loop.ingest()</code>는 pending <code>WikiSyncJob</code>을 <b>ingested로 표시</b>하고 raw 파일 목록 <code>_index.md</code>만 작성. <b>LLM(opus) 합성 호출 없음</b>. 현재 존재하는 wiki 합성 페이지는 시스템 ingest가 아니라 외부/수작업 산출.</span></div>
+    <div class="row"><span class="k gap">갭</span><span>자기진화 루프의 "ingest 합성" 단계가 사실상 no-op → outcome 태깅·반복패턴 concept화·스킬후보 자동 도출(§16.1) 모두 출발점 없음.</span></div>
+    <div class="row"><span class="k">증거</span><span class="ev">scheduler_loop.py ingest() (파일 인덱싱만, LLM 호출 없음)</span></div>
+  </div>
+</section>
+
+<section id="g6">
+  <h2><span class="sev major">MAJOR</span> &nbsp;6. 실제 Executor(tmux 인터랙티브)가 기본 실행 스택 밖</h2>
+  <div class="card">
+    <div class="meta">D3 · §10 · §23 성공기준</div>
+    <div class="row"><span class="k spec">기획</span><span>"Executor = 전용 tmux <b>새 윈도우의 인터랙티브 CLI</b>(print/exec 아님)". Host 데몬이 큐 폴링→실행, Watcher가 윈도우 감시→완료 시 kill.</span></div>
+    <div class="row"><span class="k impl">구현</span><span><code>host_daemon.py</code>+<code>cli_exec.py</code>가 tmux new-window 인터랙티브 설계를 구현(좋음). 그러나 이건 <b>호스트에서 <code>real</code> 모드로 수동 실행</b>해야 하고 <b>compose 스택에 없음</b>. 컨테이너 기본 실행기는 <code>worker_loop</code>→<code>adapter</code> = <b>simulated 산출물 또는 <code>subprocess.Popen</code>(비인터랙티브)</b>.</span></div>
+    <div class="row"><span class="k gap">갭</span><span>기본으로 돌아가는 시스템은 tmux 인터랙티브 CLI가 아님 → "권한 프롬프트 없이 인터랙티브 실행·완료 시 윈도우 kill" 성공기준이 기본 경로에서 미충족. 추가로 <code>send-keys "$(cat prompt)"</code>는 멀티라인 프롬프트에 취약, 완료 판정 휴리스틱도 "튜닝 필요"로 자인.</span></div>
+    <div class="row"><span class="k">증거</span><span class="ev">adapter.py:77-122(Popen/simulated) · host_daemon.py(compose 미포함) · cli_exec.send_prompt_command</span></div>
+  </div>
+</section>
+
+<section id="g7">
+  <h2><span class="sev major">MAJOR</span> &nbsp;7. 라이브 로그 SSE가 클라이언트에 미구현(폴링만)</h2>
+  <div class="card">
+    <div class="meta">D19 · §13 "SSE 확정(폴링 폴백)"</div>
+    <div class="row"><span class="k spec">기획</span><span>전송 = <b>SSE 1차</b>(<code>GET /runs/{id}/stream</code> 서버 푸시), 끊김 시 폴링 폴백.</span></div>
+    <div class="row"><span class="k impl">구현</span><span>백엔드 SSE 엔드포인트 O. 그러나 <b>프론트엔드는 <code>EventSource</code>/stream 미사용</b> — <code>RunMonitor</code>가 <code>getRunLog(offset)</code> <b>폴링만</b> 사용(=폴백만 구현).</span></div>
+    <div class="row"><span class="k gap">갭</span><span>"SSE 확정"의 1차 전송이 클라에 없음 → 사실상 폴링 시스템. (성공기준 "라이브 로그 SSE" 미충족.)</span></div>
+    <div class="row"><span class="k">증거</span><span class="ev">RunMonitor.tsx:18 getRunLog · web grep EventSource/stream → 0건 · 백엔드 runs.py:73 존재</span></div>
+  </div>
+</section>
+
+<!-- ===================== MINOR ===================== -->
+<section id="g8">
+  <h2><span class="sev minor">MINOR</span> &nbsp;8. RAG가 pgvector·실임베딩이 아니라 해시 BoW</h2>
+  <div class="card">
+    <div class="meta">D14 · §17</div>
+    <div class="row"><span class="k spec">기획</span><span>pgvector(기존 Postgres) + wiki 합성페이지 임베딩 + retriever→rerank→context packet.</span></div>
+    <div class="row"><span class="k impl">구현</span><span><code>rag.py</code>는 <b>결정론적 MD5 해시 bag-of-words(DIM=256)</b>를 JSON으로 저장, 파이썬 코사인. pgvector 미사용, 실제 임베딩 모델 미연결(<code>set_embedder</code> 훅만 존재). 의미검색이 아니라 토큰겹침.</span></div>
+    <div class="row"><span class="k gap">갭</span><span>RAG 품질이 키워드 매칭 수준 → "RAG 실전" 학습목표·검색정확도 미달. (MVP로 자인되어 severity는 Minor.)</span></div>
+    <div class="row"><span class="k">증거</span><span class="ev">rag.py:_default_embed, WikiEmbedding.embedding_json(JSON)</span></div>
+  </div>
+</section>
+
+<section id="g9">
+  <h2><span class="sev minor">MINOR</span> &nbsp;9. 자기진화: 마켓/Web 탐색·실제 설치/생성·자동 트리거 stub</h2>
+  <div class="card">
+    <div class="meta">D17 · §16.1</div>
+    <div class="row"><span class="k spec">기획</span><span>유사탐색 = ①설치 plugin ②마켓 레지스트리 ③Web Search. 수락→CLI 설치 / 거부→생성. ingest의 반복패턴이 <b>임계 초과 시 자동 제안</b>.</span></div>
+    <div class="row"><span class="k impl">구현</span><span>①설치 카탈로그 검색만 실제. <code>_search_market</code>/<code>_search_web</code>은 <b><code>return []</code> stub</b>. <code>accept()</code>는 <b>실제 설치/스킬파일 생성 안 함</b>(status 플립만). 트리거는 <b>수동 <code>POST /skills/evolve</code></b>뿐 — ingest 자동 임계 트리거 없음(#5와 연동 끊김).</span></div>
+    <div class="row"><span class="k gap">갭</span><span>"기존 유사 우선→설치/생성→자동 적용" 루프가 사람이 lesson 문자열을 직접 넣어야 하고, 설치/생성이 비실행.</span></div>
+    <div class="row"><span class="k">증거</span><span class="ev">skills_evolve.py:_search_market/_search_web/accept</span></div>
+  </div>
+</section>
+
+<section id="g10">
+  <h2><span class="sev minor">MINOR</span> &nbsp;10. 권한: 설정파일 기록·scope·settings_path 없음</h2>
+  <div class="card">
+    <div class="meta">D9 · §11 · §20</div>
+    <div class="row"><span class="k spec">기획</span><span>"UI→API가 <code>settings.json</code>/<code>config.toml</code>로 <b>기록</b>→데몬이 그 설정으로 시작". 권한 scope = <b>보드/프로젝트/에이전트 단위</b>. 모델 필드 <code>scope·mode·settings_path·allow/deny</code>.</span></div>
+    <div class="row"><span class="k impl">구현</span><span>플래그 조립은 정확(<code>permissions.flags_for</code>)하고 데몬이 argv로 전달. 그러나 <b>settings.json/config.toml에 기록하는 코드 없음</b>(allow/deny 저장돼도 파일 미반영). 프로필은 <b>brain 단위 전역만</b>(<code>scope</code>·<code>settings_path</code> 컬럼 없음, <code>mode</code> 대신 <code>preset</code>).</span></div>
+    <div class="row"><span class="k gap">갭</span><span>보드/프로젝트별 권한 스코프 불가, allow/deny가 실제 CLI 설정에 적용 안 됨(플래그 모드만 적용).</span></div>
+    <div class="row"><span class="k">증거</span><span class="ev">models.AgentPermissionProfile(brain/preset/allow/deny) · permissions.py(파일쓰기 없음) · host_daemon._start_run</span></div>
+  </div>
+</section>
+
+<section id="g11">
+  <h2><span class="sev minor">MINOR</span> &nbsp;11. 데이터 모델 잔여 차이</h2>
+  <div class="card">
+    <div class="meta">§20</div>
+    <ul class="tight">
+      <li><b>agent_runs 상태 enum</b>: 기획 <code>queued→dispatched→running→rate_limited→interrupted→success/failed/canceled</code>. 구현은 <code>dispatched</code>·<code>interrupted</code>를 <b>아무데서도 set 안 함</b>(durability가 조회만). 두 상태 vestigial. <span class="ev">models.py:314 · durability.py:77</span></li>
+      <li><b>navigator_decisions</b>: 기획 <code>model_id</code> → 구현 <code>model</code>(명칭 차이, 기능 동일). rag_context_refs·task_kind는 충족.</li>
+      <li><b>model_registry</b>: 기획 §20은 "테이블", 구현은 파이썬 모듈. (단 §12가 "config 모듈 OR 테이블" 허용 → <b>사실상 허용된 일탈</b>.)</li>
+    </ul>
+  </div>
+</section>
+
+<!-- ===================== COSMETIC ===================== -->
+<section id="g12">
+  <h2><span class="sev cosm">COSMETIC</span> &nbsp;12~15. 잔재·UX 미세갭</h2>
+  <div class="card">
+    <ul class="tight">
+      <li><b>12. Hermes 잔존</b> — D2 "Hermes 제거"(위키 개요도 "제거 대상" 명시)인데 코드가 여전히 <code>actor="Hermes"</code>로 전이 기록. <span class="ev">adapter.py:98 · host_daemon.py:65 · transitions.py:23</span></li>
+      <li><b>13. 보드/큐 자동 폴링 없음</b> — §19 라이브 UX인데 <code>setInterval</code> 0건 → 큐가 stale 표시(앞선 "queued vs success" 혼란의 원인). <span class="ev">App.tsx refresh()는 수동/마운트시만</span></li>
+      <li><b>14. scheduled-jobs/snapshots UI 미노출</b> — §21 "cron 재무장 가시화" 엔드포인트는 있으나 프론트 표시 없음. <span class="ev">web grep scheduled/snapshot → 0건</span></li>
+      <li><b>15. <code>POST /runs/{id}/resume</code> 부재</b>(§21) — #4와 연동. 수동 재개 경로조차 없음.</li>
+    </ul>
+  </div>
+</section>
+
+<section>
+  <h2>권장 우선순위 (갭 메우기)</h2>
+  <ol class="tight" style="padding-left:22px">
+    <li><b>#2 Navigator를 LangChain LLM 체인으로</b> — 부 목적(포트폴리오)의 핵심이자 단일 변경 효과 큼. 규칙 스코어링은 폴백으로 유지.</li>
+    <li><b>#1+#3 LangGraph를 실주류 런타임 + Postgres checkpointer</b> — 드래그=실행이 그래프를 통과하도록, worker/watcher는 그래프 노드의 실행기로 격하.</li>
+    <li><b>#4 Rate-limit 폐루프</b> — Haiku 파서 호출 + <code>scheduled_jobs</code> 발화 워커 + resume 엔드포인트/UI.</li>
+    <li><b>#5 Ingest 합성</b>(opus) → #9 자동 스킬 트리거가 살아남.</li>
+    <li><b>#7 SSE 클라이언트</b>·<b>#13 폴링</b> — 작은 변경으로 UX/성공기준 충족.</li>
+    <li><b>#6 실행 데몬을 기본 스택에 편입</b>(real 모드 운영 경로 확정).</li>
+    <li>나머지(#8 pgvector, #10 권한 파일기록/scope, #11 enum, #12 Hermes 정리)는 하드닝 단계.</li>
+  </ol>
+</section>
+
+<footer>
+  방법: spec rev.4 전문 + llm_wiki(overview·decisions) + <code>apps/</code> 정적 분석 + 라이브 Postgres/컨테이너 확인. 모든 갭에 파일:라인 증거 부기.<br/>
+  생성일 2026-06-28 · branch <code>feat/reconstructed</code> · 파일 <code>docs/spec-conformance-gap-analysis.html</code> · 위키 결정들의 <code>outcome: pending</code>(review_on 2026-07-26) 기준.
+</footer>
+</main>
+</div>
+</body>
+</html>

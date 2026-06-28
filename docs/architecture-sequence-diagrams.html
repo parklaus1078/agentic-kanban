@@ -1,0 +1,589 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Agent System v2 — API 관계 &amp; 워크플로우 시퀀스 다이어그램</title>
+<script src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js"></script>
+<style>
+  :root {
+    --bg: #0f1117; --panel: #171a23; --panel2: #1e222e; --border: #2a2f3d;
+    --fg: #e6e8ee; --muted: #9aa3b4; --accent: #7aa2f7; --accent2: #9ece6a;
+    --warn: #e0af68; --pink: #bb9af7;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; background: var(--bg); color: var(--fg);
+    font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Noto Sans KR", sans-serif; }
+  .layout { display: grid; grid-template-columns: 280px 1fr; min-height: 100vh; }
+  nav { position: sticky; top: 0; align-self: start; height: 100vh; overflow-y: auto;
+    background: var(--panel); border-right: 1px solid var(--border); padding: 20px 16px; }
+  nav h1 { font-size: 15px; margin: 0 0 4px; color: var(--accent); }
+  nav .sub { font-size: 11px; color: var(--muted); margin-bottom: 16px; }
+  nav a { display: block; padding: 6px 10px; border-radius: 6px; color: var(--fg);
+    text-decoration: none; font-size: 13px; margin-bottom: 2px; border-left: 2px solid transparent; }
+  nav a:hover { background: var(--panel2); border-left-color: var(--accent); }
+  nav .group { font-size: 11px; text-transform: uppercase; letter-spacing: .08em;
+    color: var(--muted); margin: 16px 0 6px 10px; }
+  main { padding: 32px 40px 120px; max-width: 1100px; }
+  header.page { margin-bottom: 28px; }
+  header.page h1 { font-size: 26px; margin: 0 0 6px; }
+  header.page p { color: var(--muted); margin: 4px 0; font-size: 14px; }
+  section { background: var(--panel); border: 1px solid var(--border); border-radius: 12px;
+    padding: 22px 26px; margin-bottom: 28px; scroll-margin-top: 20px; }
+  section > h2 { margin: 0 0 4px; font-size: 19px; color: var(--accent); }
+  section > .tag { font-size: 12px; color: var(--warn); font-family: ui-monospace, monospace; }
+  section > .desc { color: var(--muted); font-size: 13.5px; line-height: 1.6; margin: 10px 0 16px; }
+  .mermaid { background: var(--panel2); border-radius: 10px; padding: 18px; overflow-x: auto; }
+  table { border-collapse: collapse; width: 100%; font-size: 13px; margin-top: 8px; }
+  th, td { border: 1px solid var(--border); padding: 7px 10px; text-align: left; vertical-align: top; }
+  th { background: var(--panel2); color: var(--accent2); font-weight: 600; }
+  td code, .desc code { background: #0c0e14; padding: 1px 6px; border-radius: 4px;
+    font-family: ui-monospace, monospace; font-size: 12px; color: var(--pink); }
+  .pill { display: inline-block; font-size: 11px; font-family: ui-monospace, monospace;
+    padding: 1px 7px; border-radius: 20px; margin-right: 6px; }
+  .GET { background: #1b3a2a; color: #9ece6a; }
+  .POST { background: #1b2c4a; color: #7aa2f7; }
+  .PATCH { background: #4a3b1b; color: #e0af68; }
+  .DELETE { background: #4a1b1b; color: #f7768e; }
+  .legend { font-size: 12px; color: var(--muted); display: flex; gap: 18px; flex-wrap: wrap; margin-top: 10px; }
+  .legend b { color: var(--fg); }
+  footer { color: var(--muted); font-size: 12px; margin-top: 40px; }
+  a.anchor { color: var(--accent); text-decoration: none; }
+</style>
+</head>
+<body>
+<div class="layout">
+<nav>
+  <h1>Agent System v2</h1>
+  <div class="sub">apps/ 소스 기반 · API 관계 &amp; 워크플로우</div>
+  <div class="group">개요</div>
+  <a href="#overview">시스템 컴포넌트 구성</a>
+  <a href="#statemodel">티켓 상태 모델</a>
+  <div class="group">핵심 워크플로우</div>
+  <a href="#wf-execute">1. 티켓 실행 (드래그→In Progress)</a>
+  <a href="#wf-navigator">2. Navigator 라우팅</a>
+  <a href="#wf-subdivide">3. 서브디비전 (분할)</a>
+  <a href="#wf-review">4. 리뷰 / 리런 루프</a>
+  <a href="#wf-cancel">5. 취소 (run / queue)</a>
+  <div class="group">부가 워크플로우</div>
+  <a href="#wf-orchestrate">6. LangGraph orchestrate</a>
+  <a href="#wf-recovery">7. 부팅 복구 (durability)</a>
+  <a href="#wf-scheduler">8. 스케줄러 (wiki/snapshot)</a>
+  <a href="#wf-project">9. 프로젝트/보드 생성</a>
+  <a href="#wf-logstream">10. 라이브 로그 스트림</a>
+  <div class="group">참고</div>
+  <a href="#endpoints">API 엔드포인트 레퍼런스</a>
+</nav>
+
+<main>
+<header class="page">
+  <h1>API 관계 &amp; 워크플로우 시퀀스 다이어그램</h1>
+  <p>출처: <code>apps/api</code> (FastAPI · SQLAlchemy · LangGraph) + <code>apps/web</code> (React SPA)</p>
+  <p>각 다이어그램은 실제 라우터·서비스 호출 순서를 그대로 따릅니다. 시뮬레이션 모드(<code>agent_mode=simulated</code>) 기준이며, real 모드 차이는 주석으로 표기.</p>
+  <div class="legend">
+    <span><b>Kay</b> 사용자/브라우저</span>
+    <span><b>UI</b> React SPA</span>
+    <span><b>API</b> FastAPI 라우터</span>
+    <span><b>Worker/Watcher/Sched</b> 백그라운드 컨테이너 루프</span>
+    <span><b>DB</b> Postgres</span>
+    <span><b>Wiki</b> LLM Wiki(파일시스템)</span>
+  </div>
+</header>
+
+<section id="overview">
+  <h2>시스템 컴포넌트 구성</h2>
+  <div class="desc">
+    5개의 컨테이너(<code>docker-compose.yml</code>)가 하나의 Postgres를 공유합니다.
+    <b>API</b>는 동기적으로 상태를 바꾸고 큐에 적재만 하며, 실제 실행은 <b>worker_loop</b>(3초 폴링)·<b>watcher_loop</b>(2초 폴링)가
+    비동기로 구동합니다 — 이 분리 때문에 UI가 폴링하지 않으면 큐 표시가 잠깐 stale해 보일 수 있습니다.
+  </div>
+  <div class="mermaid">
+flowchart LR
+  Kay([Kay / Browser])
+  subgraph Front[apps/web · React SPA :5173]
+    UI[App.tsx · QueuePanel · TicketDrawer · RunMonitor]
+  end
+  subgraph Back[apps/api · FastAPI]
+    API[routers: projects/boards/tickets/runs/admin/wiki/system]
+    SVC[services: navigator · lifecycle · runs · review · subdivision · adapter · watcher · orchestrator · durability]
+  end
+  WK[worker_loop<br/>poll 3s]
+  WT[watcher_loop<br/>poll 2s]
+  SC[scheduler_loop<br/>ingest/audit/snapshot]
+  DB[(Postgres)]
+  WIKI[[LLM Wiki<br/>raw events / output dirs]]
+  CLI{{Agent CLI<br/>Codex / Claude<br/>·real mode·}}
+
+  Kay --> UI
+  UI -- REST / SSE --> API
+  API --> SVC
+  SVC --> DB
+  SVC --> WIKI
+  WK --> DB
+  WK -- execute_run --> WIKI
+  WK -. real .-> CLI
+  WT --> DB
+  WT -- read sentinel --> WIKI
+  SC --> DB
+  SC --> WIKI
+  </div>
+</section>
+
+<section id="statemodel">
+  <h2>티켓 상태 모델 (상태 전이 규칙)</h2>
+  <div class="tag">apps/api/app/transitions.py</div>
+  <div class="desc">
+    모든 상태 변경은 <code>lifecycle.transition_ticket()</code>을 통과하며, 이때 <code>StatusEvent</code> 기록 + LLM Wiki raw 이벤트 + <code>WikiSyncJob</code> 적재가 함께 일어납니다.
+    <code>In Progress</code> 블록은 <code>digest_policy = agent_execute</code> — 진입 시 자동 실행 트리거.
+  </div>
+  <div class="mermaid">
+stateDiagram-v2
+  [*] --> TriageReady
+  TriageReady: Triage/Ready
+  InProgress: In Progress (agent_execute)
+  TriageReady --> Todo
+  TriageReady --> InProgress
+  Todo --> InProgress
+  InProgress --> Reviewing
+  InProgress --> Blocked
+  InProgress --> Completed
+  Blocked --> InProgress
+  Reviewing --> Completed
+  Reviewing --> InProgress: Kay 리런
+  Completed --> [*]
+  note right of InProgress : 모든 비종료 상태 → Canceled 허용
+  </div>
+</section>
+
+<section id="wf-execute">
+  <h2>1. 티켓 실행 — 드래그 → In Progress (헤드라인 플로우)</h2>
+  <div class="tag">tickets.transition → _maybe_auto_dispatch → navigator → runs → [worker] → [watcher]</div>
+  <div class="desc">
+    드래그 한 번이 3단계로 분리 실행됩니다: <b>(A)</b> API가 상태 전환 + 큐 적재(동기) →
+    <b>(B)</b> worker가 큐를 집어 실행 → <b>(C)</b> watcher가 완료 감지 후 Reviewing으로 이동.
+    A 직후의 UI 스냅샷에는 큐가 <code>queued</code>로 찍히지만, B·C는 백그라운드라 UI가 새로고침해야 <code>done</code>이 반영됩니다.
+  </div>
+  <div class="mermaid">
+sequenceDiagram
+  autonumber
+  actor Kay
+  participant UI
+  participant API as API /tickets
+  participant NAV as navigator
+  participant LC as lifecycle
+  participant RUNS as runs
+  participant DB as Postgres
+  participant WIKI as LLM Wiki
+  participant WK as worker_loop
+  participant AD as adapter
+  participant WT as watcher_loop
+
+  Note over Kay,DB: (A) 동기 — transition 엔드포인트
+  Kay->>UI: 카드 드래그 → "In Progress"
+  UI->>API: POST /tickets/13/transition {to_status:"In Progress"}
+  API->>LC: transition_ticket(Todo→In Progress)
+  LC->>DB: status_block_id 갱신 + StatusEvent insert
+  LC->>WIKI: write_status_event() raw .md
+  LC->>DB: WikiSyncJob(pending) insert
+  API->>API: _maybe_auto_dispatch()<br/>block.digest_policy==agent_execute & 활성 run 없음
+  API->>NAV: recommend(ticket)
+  NAV->>DB: NavigatorDecision insert · assignee_persona 설정
+  API->>RUNS: create_run(persona/agent/model/skills)
+  RUNS->>DB: AgentRun(status=queued) + QueueItem(state=queued) insert
+  API-->>UI: TransitionResult (ticket=In Progress)
+  Note over UI: 이 시점 큐 스냅샷 = "queued" (worker 아직 tick 전)
+
+  Note over WK,WIKI: (B) 비동기 — worker_loop 3초 폴링
+  WK->>DB: SELECT queue_items WHERE state='queued'
+  WK->>DB: QueueItem.state='running', locked_by='worker'
+  WK->>AD: execute_run(run)
+  AD->>LC: (필요 시) In Progress 전환
+  AD->>DB: run.status='running', started_at
+  AD->>WIKI: result.md + .agent_done.json 작성 (sim)
+  Note right of AD: real 모드 → CLI 서브프로세스 spawn,<br/>CLI가 sentinel 작성
+
+  Note over WT,WIKI: (C) 비동기 — watcher_loop 2초 폴링
+  WT->>DB: SELECT runs WHERE status='running'
+  WT->>WIKI: .agent_done.json 읽기
+  WT->>DB: Artifact + WatcherEvent insert
+  WT->>DB: run.status='success', finished_at · QueueItem.state='done'
+  WT->>LC: transition In Progress→Reviewing
+  LC->>WIKI: raw 이벤트 + WikiSyncJob
+
+  Kay->>UI: 새로고침 (or 보드 재진입)
+  UI->>API: GET /queue · GET board · GET tickets
+  API-->>UI: queue=done · ticket=Reviewing · run=success
+  </div>
+</section>
+
+<section id="wf-navigator">
+  <h2>2. Navigator 라우팅 (내부 동작)</h2>
+  <div class="tag">services/navigator.py · recommend()</div>
+  <div class="desc">
+    규칙 우선(rule-first) 라우터. 티켓 컨텍스트를 페르소나 키워드로 스코어링 → 최고 페르소나의 기본 agent/model 매핑 →
+    페르소나 호환성+태그로 스킬 랭킹 → RAG로 위키 컨텍스트 주입. <code>task_kind</code>와 manual override를 반영해 <code>NavigatorDecision</code>으로 기록.
+  </div>
+  <div class="mermaid">
+sequenceDiagram
+  autonumber
+  participant API
+  participant NAV as navigator
+  participant RAG as rag
+  participant DB as Postgres
+
+  API->>NAV: recommend(ticket, override?, task_kind)
+  NAV->>NAV: _context(ticket) — title+desc+AC+digestible comments
+  NAV->>NAV: _score_personas() — 키워드 카운트 정렬
+  alt best_score == 0
+    NAV->>NAV: 기본 페르소나 = Full Stack Developer (confidence 0.40)
+  else 키워드 매칭
+    NAV->>NAV: persona=최고점 · confidence = clamp(0.55 +0.07·hits +0.05·margin)
+  end
+  opt task_kind == "subdivide"
+    NAV->>NAV: 기술 키워드면 CTO, 아니면 PM (planning persona)
+  end
+  opt override.persona/agent/model/skills
+    NAV->>NAV: 수동 오버라이드 반영 (manual_override=true)
+  end
+  NAV->>DB: SELECT Persona → default_agent/model/family
+  NAV->>DB: SELECT Skill → _recommend_skills() 랭킹
+  NAV->>RAG: search(context, k=3) — 위키 페이지 참조
+  RAG->>DB: WikiEmbedding 조회
+  NAV->>DB: NavigatorDecision insert + ticket.assignee_persona 설정
+  NAV-->>API: decision (persona·agent·model·skills·confidence·alternatives)
+  </div>
+</section>
+
+<section id="wf-subdivide">
+  <h2>3. 서브디비전 — 에픽 분할</h2>
+  <div class="tag">tickets.subdivide → subdivision.propose / approve</div>
+  <div class="desc">
+    Kay가 분할을 트리거하면 Navigator가 기획 페르소나(CTO/PM)로 라우팅하고 자식 티켓 제안을 만듭니다.
+    Kay 승인 시 자식들이 <code>parent_ticket_id</code>를 달고 <b>Todo</b>에 생성됩니다. 자식은 다시 분할 가능(재귀).
+    모든 자식이 Completed가 되면 부모가 자동 완료(롤업) — 리뷰 워크플로우에서 발생.
+  </div>
+  <div class="mermaid">
+sequenceDiagram
+  autonumber
+  actor Kay
+  participant UI
+  participant API as API /tickets
+  participant SUB as subdivision
+  participant NAV as navigator
+  participant DB as Postgres
+
+  Kay->>UI: "Subdivide" ASV2-0012
+  UI->>API: POST /tickets/12/subdivide
+  API->>SUB: propose(ticket)
+  SUB->>NAV: recommend(task_kind="subdivide")
+  NAV->>DB: NavigatorDecision(task_kind=subdivide, persona=CTO/PM)
+  SUB->>SUB: _propose_children() — 프로젝트성이면 BE/FE/DB/Infra/Design,<br/>아니면 Plan/Implement/Test
+  SUB->>DB: SubdivisionProposal(status=proposed, children_json) insert
+  API-->>UI: proposal (제안된 자식 목록)
+
+  Kay->>UI: 제안 검토 후 "Approve"
+  UI->>API: POST /subdivisions/{id}/approve
+  API->>SUB: approve(proposal)
+  loop 각 자식 spec
+    SUB->>DB: Ticket(parent_ticket_id=12, status=Todo) insert
+  end
+  SUB->>DB: proposal.status='approved'
+  API-->>UI: 생성된 자식 티켓들 (Todo)
+  Note over Kay,DB: 이후 각 자식을 In Progress로 드래그 → 워크플로우 #1
+  </div>
+</section>
+
+<section id="wf-review">
+  <h2>4. 리뷰 / 리런 루프</h2>
+  <div class="tag">tickets.review → review.review_ticket</div>
+  <div class="desc">
+    티켓이 <code>Reviewing</code>일 때만 가능. <b>만족</b> → Completed + 부모 롤업 검사.
+    <b>불만족</b> → In Progress로 되돌리고 리뷰 코멘트를 다음 run 프롬프트에 주입한 <b>리런</b> 생성 → worker/watcher가 다시 구동(워크플로우 #1로 회귀).
+  </div>
+  <div class="mermaid">
+sequenceDiagram
+  autonumber
+  actor Kay
+  participant UI
+  participant API as API /tickets
+  participant RV as review
+  participant LC as lifecycle
+  participant SUB as subdivision
+  participant RUNS as runs
+  participant DB as Postgres
+
+  Note over Kay: 티켓 status == Reviewing
+  Kay->>UI: 리뷰 (satisfied?, comment)
+  UI->>API: POST /tickets/13/review {satisfied, comment_md}
+  API->>RV: review_ticket(ticket, satisfied, comment)
+  RV->>DB: Comment(author=kay) insert
+
+  alt satisfied = true
+    RV->>LC: transition Reviewing→Completed
+    RV->>SUB: maybe_autocomplete_parent(ticket)
+    SUB->>DB: 모든 형제 Completed면 부모→Completed (재귀 롤업)
+    API-->>UI: ticket=Completed
+  else satisfied = false (리런)
+    RV->>LC: transition Reviewing→In Progress
+    RV->>DB: 직전 run 조회 (persona/agent/model/skills/output 재사용)
+    RV->>RUNS: create_run(review_comment, previous_output_path)
+    RUNS->>DB: AgentRun(queued) + QueueItem(queued)
+    API-->>UI: ticket=In Progress + rerun
+    Note over RUNS,DB: worker/watcher 루프가 리런 실행 → 워크플로우 #1
+  end
+  </div>
+</section>
+
+<section id="wf-cancel">
+  <h2>5. 취소 — run / queue item</h2>
+  <div class="tag">runs.cancel_run · runs.cancel_queue_item</div>
+  <div class="desc">
+    큐 항목 취소와 run 취소는 서로 동기화됩니다. real 모드에서 실행 중인 프로세스는 <code>SIGTERM</code>으로 종료 시도.
+    취소 시 티켓도 (종료 상태가 아니면) <b>Canceled</b>로 전환됩니다.
+  </div>
+  <div class="mermaid">
+sequenceDiagram
+  autonumber
+  actor Kay
+  participant UI
+  participant API as API /runs|/queue
+  participant LC as lifecycle
+  participant OS as OS process
+  participant DB as Postgres
+
+  Kay->>UI: 큐 항목 / run 취소
+  alt 큐 항목 취소
+    UI->>API: POST /queue/{id}/cancel
+    API->>DB: QueueItem.state='canceled', cancel_requested=true
+    opt 연결된 run이 queued/running
+      API->>API: _cancel_run(run)
+      API->>DB: run.status='canceled', finished_at
+      API->>LC: transition ticket→Canceled
+    end
+  else run 취소
+    UI->>API: POST /runs/{id}/cancel
+    opt run.status=running & real process
+      API->>OS: kill(pid, SIGTERM)
+    end
+    API->>DB: run.status='canceled'
+    API->>LC: transition ticket→Canceled
+    API->>DB: QueueItem.cancel_requested=true, state='canceled'
+  end
+  API-->>UI: 갱신된 run/queue
+  </div>
+</section>
+
+<section id="wf-orchestrate">
+  <h2>6. LangGraph orchestrate (대체 구동 경로)</h2>
+  <div class="tag">tickets.orchestrate → orchestrator.run_ticket (StateGraph)</div>
+  <div class="desc">
+    worker/watcher 폴링 대신 한 티켓을 명시적 상태그래프로 끝까지 구동: <code>navigate → dispatch → (실패 분류) → watch → END</code>.
+    내부적으로 같은 서비스(navigator/runs/adapter/watcher)를 호출합니다. 실패 분류에 따라 retry(최대 3) / rate_limited(재개 스케줄) / blocked 분기.
+  </div>
+  <div class="mermaid">
+sequenceDiagram
+  autonumber
+  participant UI
+  participant API as API /tickets
+  participant OR as orchestrator
+  participant NAV as navigator
+  participant RUNS as runs
+  participant AD as adapter
+  participant FA as failure
+  participant WT as watcher
+  participant DB as Postgres
+
+  UI->>API: POST /tickets/{id}/orchestrate
+  API->>OR: run_ticket(id)  (compile StateGraph)
+  OR->>NAV: [navigate] recommend → persona/agent/model
+  OR->>RUNS: [dispatch] 기존 queued run 재사용 or create_run
+  OR->>AD: worker_tick(db) — 실행
+  OR->>FA: classify(run.error) → failure_cls
+  alt USAGE_LIMIT
+    OR->>FA: [rate_limited] schedule_rate_limit_resume(+5h) → END
+  else TRANSIENT & retries<3
+    OR->>OR: [retry] retries+1 → dispatch 재진입
+  else TRANSIENT & retries>=3
+    OR->>DB: [blocked] transition ticket→Blocked → END
+  else NONE
+    OR->>WT: [watch] watcher_tick → Reviewing/Blocked → END
+  end
+  OR-->>API: state (ticket_id, run_id)
+  API-->>UI: {status, run_id}
+  </div>
+</section>
+
+<section id="wf-recovery">
+  <h2>7. 부팅 복구 (durability)</h2>
+  <div class="tag">main.lifespan → durability.recover_interrupted_runs</div>
+  <div class="desc">
+    이 머신은 정전으로 WSL/컨테이너/tmux를 잃습니다. API 부팅 시 중단된 run(<code>dispatched/running</code>)을 찾아
+    <code>queued</code>로 되돌리고 큐를 재적재 → worker가 다시 집어갑니다(run은 멱등). 별도로 스케줄러가 Postgres 스냅샷을 <code>/mnt/k</code>로 덤프.
+  </div>
+  <div class="mermaid">
+sequenceDiagram
+  autonumber
+  participant API as API (lifespan)
+  participant SEED as seed
+  participant DUR as durability
+  participant DB as Postgres
+
+  Note over API: 컨테이너 기동
+  API->>DB: init_db() — 테이블 생성
+  opt autoseed
+    API->>SEED: seed_all() — 보드/페르소나/스킬
+  end
+  API->>DUR: recover_interrupted_runs()
+  DUR->>DB: SELECT runs WHERE status IN (dispatched, running)
+  loop 중단된 각 run
+    DUR->>DB: run.status='queued', process_id=null, started_at=null
+    DUR->>DB: QueueItem 있으면 running→queued, 없으면 새로 insert
+  end
+  DUR-->>API: 재적재된 run 수
+  Note over API: yield → 정상 서빙 시작
+  </div>
+</section>
+
+<section id="wf-scheduler">
+  <h2>8. 스케줄러 — LLM Wiki ingest/audit + 스냅샷</h2>
+  <div class="tag">scheduler_loop.py · durability.create_snapshot</div>
+  <div class="desc">
+    데일리 ingest(02:00 KST): pending <code>WikiSyncJob</code>을 ingested로 표시하고 raw 인덱스 갱신.
+    월말 audit(04:00 KST): raw 파일 존재/연결 검증. 스냅샷: <code>pg_dump</code>로 외부 디스크에 덤프 후 최근 N개만 보존.
+  </div>
+  <div class="mermaid">
+sequenceDiagram
+  autonumber
+  participant SC as scheduler_loop
+  participant DB as Postgres
+  participant WIKI as LLM Wiki (FS)
+  participant DUR as durability
+
+  loop 스케줄 (ingest/audit/snapshot)
+    Note over SC: ingest (daily 02:00 KST)
+    SC->>DB: SELECT WikiSyncJob WHERE ingest_status='pending'
+    SC->>DB: 파일 존재 → ingested, 없으면 missing
+    SC->>WIKI: _index.md 재작성
+
+    Note over SC: audit (월말 04:00 KST)
+    SC->>DB: 전체 job raw_path 검증 → ok/missing
+
+    Note over SC: snapshot (fail-safe)
+    SC->>DUR: create_snapshot(stamp)
+    DUR->>DB: pg_dump --dbname → /mnt/k/asv2-*.sql
+    DUR->>DUR: prune_snapshots(keep=N)
+  end
+  </div>
+</section>
+
+<section id="wf-project">
+  <h2>9. 프로젝트 / 보드 생성</h2>
+  <div class="tag">projects.create_project → seed.seed_statuses</div>
+  <div class="desc">
+    프로젝트 생성 시 첫 보드를 자동 프로비저닝하고, 선택한 템플릿의 기본 상태 블록(여기서 <code>In Progress = agent_execute</code> 정책 포함)을 시드합니다. 아카이브는 soft delete.
+  </div>
+  <div class="mermaid">
+sequenceDiagram
+  autonumber
+  actor Kay
+  participant UI
+  participant API as API /projects
+  participant SEED as seed
+  participant DB as Postgres
+
+  Kay->>UI: 새 프로젝트 생성
+  UI->>API: POST /projects {title, slug?, board_template_id?}
+  API->>DB: 유니크 slug 계산
+  API->>DB: Project insert
+  API->>DB: Board insert (project의 첫 보드)
+  API->>SEED: seed_statuses(board) — 기본 상태 블록 + digest_policy
+  API->>DB: commit
+  API-->>UI: ProjectOut (board_id 포함)
+  </div>
+</section>
+
+<section id="wf-logstream">
+  <h2>10. 라이브 로그 스트림 (§13)</h2>
+  <div class="tag">RunMonitor → /runs/{id}/stream (SSE) · /runs/{id}/log (폴링 폴백)</div>
+  <div class="desc">
+    실행 중 run의 세션 로그를 실시간 tail. 1차는 SSE 스트림, 폴백은 byte-offset 폴링. real 모드에선 tmux pane을 같은 로그 파일로 파이프.
+    run이 종료 상태가 되면 <code>eof</code>로 종료.
+  </div>
+  <div class="mermaid">
+sequenceDiagram
+  autonumber
+  participant UI as RunMonitor
+  participant API as API /runs
+  participant FS as log file
+  participant DB as Postgres
+
+  UI->>API: GET /runs/{id}/stream  (EventSource)
+  loop run 종료 전 (~60s 바운드)
+    API->>DB: run.log_path, run.status 조회
+    API->>FS: 새 byte 읽기
+    API-->>UI: data: <line>
+  end
+  API-->>UI: event: done (eof / timeout)
+  Note over UI,API: 폴백: GET /runs/{id}/log?offset=N → {content, offset, eof}
+  </div>
+</section>
+
+<section id="endpoints">
+  <h2>API 엔드포인트 레퍼런스</h2>
+  <div class="desc">라우터별 전체 엔드포인트(<code>apps/api/app/routers</code>). 메서드 색상으로 구분.</div>
+  <table>
+    <thead><tr><th style="width:90px">메서드</th><th>경로</th><th>설명</th></tr></thead>
+    <tbody>
+      <tr><td><span class="pill GET">GET</span></td><td><code>/projects</code> · <code>/projects/{id}</code></td><td>프로젝트 목록/조회</td></tr>
+      <tr><td><span class="pill POST">POST</span></td><td><code>/projects</code></td><td>프로젝트 생성(+첫 보드 프로비저닝)</td></tr>
+      <tr><td><span class="pill PATCH">PATCH</span></td><td><code>/projects/{id}</code></td><td>프로젝트 수정</td></tr>
+      <tr><td><span class="pill POST">POST</span></td><td><code>/projects/{id}/archive</code></td><td>아카이브(soft delete)</td></tr>
+      <tr><td><span class="pill GET">GET</span></td><td><code>/board-templates</code></td><td>보드 템플릿 목록</td></tr>
+      <tr><td><span class="pill GET">GET</span></td><td><code>/boards</code> · <code>/boards/{id}</code> · <code>/boards/{id}/status-blocks</code></td><td>보드/상태 블록 조회</td></tr>
+      <tr><td><span class="pill POST">POST</span></td><td><code>/boards</code> · <code>/boards/{id}/status-blocks</code></td><td>보드/상태 블록 생성</td></tr>
+      <tr><td><span class="pill PATCH">PATCH</span> <span class="pill DELETE">DEL</span></td><td><code>/status-blocks/{id}</code></td><td>상태 블록 수정/삭제</td></tr>
+      <tr><td><span class="pill GET">GET</span></td><td><code>/boards/{id}/tickets</code> · <code>/tickets/{id}</code></td><td>티켓 목록/상세</td></tr>
+      <tr><td><span class="pill POST">POST</span></td><td><code>/tickets</code></td><td>티켓 생성(Triage/Ready)</td></tr>
+      <tr><td><span class="pill PATCH">PATCH</span></td><td><code>/tickets/{id}</code></td><td>티켓 수정</td></tr>
+      <tr><td><span class="pill GET">GET</span> <span class="pill POST">POST</span></td><td><code>/tickets/{id}/comments</code></td><td>코멘트 목록/추가</td></tr>
+      <tr><td><span class="pill POST">POST</span></td><td><code>/tickets/{id}/transition</code></td><td><b>상태 전환</b> (+ agent_execute 자동 디스패치)</td></tr>
+      <tr><td><span class="pill POST">POST</span></td><td><code>/tickets/{id}/navigator/recommend</code></td><td>Navigator 추천(오버라이드 가능)</td></tr>
+      <tr><td><span class="pill POST">POST</span></td><td><code>/tickets/{id}/runs</code></td><td>수동 run 생성</td></tr>
+      <tr><td><span class="pill POST">POST</span></td><td><code>/tickets/{id}/orchestrate</code></td><td>LangGraph 단일 티켓 구동</td></tr>
+      <tr><td><span class="pill POST">POST</span></td><td><code>/tickets/{id}/subdivide</code></td><td>서브디비전 제안</td></tr>
+      <tr><td><span class="pill GET">GET</span></td><td><code>/tickets/{id}/subdivision</code></td><td>최신 제안 조회</td></tr>
+      <tr><td><span class="pill POST">POST</span></td><td><code>/subdivisions/{id}/approve</code> · <code>/reject</code></td><td>제안 승인/거절</td></tr>
+      <tr><td><span class="pill POST">POST</span></td><td><code>/tickets/{id}/review</code></td><td>리뷰(만족→완료 / 불만족→리런)</td></tr>
+      <tr><td><span class="pill GET">GET</span></td><td><code>/runs/{id}</code> · <code>/runs/{id}/log</code> · <code>/runs/{id}/stream</code></td><td>run 상세 / 로그 폴링 / SSE 스트림</td></tr>
+      <tr><td><span class="pill POST">POST</span></td><td><code>/runs/{id}/cancel</code></td><td>run 취소</td></tr>
+      <tr><td><span class="pill GET">GET</span></td><td><code>/queue</code></td><td>큐 목록</td></tr>
+      <tr><td><span class="pill PATCH">PATCH</span></td><td><code>/queue/reorder</code></td><td>큐 순서 변경</td></tr>
+      <tr><td><span class="pill POST">POST</span></td><td><code>/queue/{id}/cancel</code></td><td>큐 항목 취소</td></tr>
+      <tr><td><span class="pill POST">POST</span></td><td><code>/admin/worker/tick</code> · <code>/admin/watcher/tick</code></td><td>수동 워커/와처 tick(데모용)</td></tr>
+      <tr><td><span class="pill POST">POST</span></td><td><code>/admin/seed</code></td><td>시드 재실행</td></tr>
+      <tr><td><span class="pill GET">GET</span></td><td><code>/health</code></td><td>헬스체크</td></tr>
+      <tr><td><span class="pill GET">GET</span></td><td><code>/personas</code> · <code>/skills</code></td><td>카탈로그</td></tr>
+      <tr><td><span class="pill GET">GET</span> <span class="pill POST">POST</span></td><td><code>/wiki-sync/jobs</code> · <code>/wiki-sync/tickets/{id}/fork-raw</code></td><td>위키 동기화 잡 / raw fork</td></tr>
+      <tr><td><span class="pill GET">GET</span> <span class="pill POST">POST</span></td><td><code>/system/snapshots</code> · <code>/models</code> · <code>/permission-presets</code> · <code>/agents/{brain}/permissions</code> · <code>/skills/generated</code> · <code>/skills/evolve</code> · <code>/memory/search</code> · <code>/scheduled-jobs</code></td><td>시스템·권한·자가진화·메모리(RAG)·스케줄 잡</td></tr>
+    </tbody>
+  </table>
+</section>
+
+<footer>
+  생성: apps/ 소스 정적 분석 · Mermaid v10 (CDN) 렌더링. 다이어그램이 안 보이면 인터넷 연결을 확인하세요.<br/>
+  파일: <code>docs/architecture-sequence-diagrams.html</code>
+</footer>
+</main>
+</div>
+
+<script>
+  mermaid.initialize({
+    startOnLoad: true,
+    theme: 'dark',
+    securityLevel: 'loose',
+    sequence: { showSequenceNumbers: false, wrap: true, width: 150 },
+    themeVariables: { fontFamily: 'ui-monospace, monospace', fontSize: '13px' }
+  });
+</script>
+</body>
+</html>
